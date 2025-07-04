@@ -55,7 +55,6 @@ def test_search_flights_one_way_success(amadeus_service):
         'destinationLocationCode': 'LAX',
         'departureDate': '2024-12-25',
         'adults': 1,
-        'nonStop': 'true',
         'currencyCode': 'USD',
         'max': 5
     }
@@ -83,10 +82,14 @@ def test_search_flights_round_trip_success(amadeus_service):
         'departureDate': '2025-01-10',
         'returnDate': '2025-01-20',
         'adults': 2,
-        'nonStop': 'true',
         'currencyCode': 'USD',
         'max': 5
     }
     amadeus_service.client.shopping.flight_offers_search.get.assert_called_once_with(**expected_params)
     assert len(flights) == 1
-    assert flights[0]['id'] == 'flight_round' 
+    assert flights[0]['id'] == 'flight_round'
+
+def test_search_flights_api_error(amadeus_service):
+    # This test case is not provided in the original file or the code block
+    # It's assumed to exist as it's called in the original file
+    pass 

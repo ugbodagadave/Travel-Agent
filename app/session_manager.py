@@ -9,64 +9,34 @@ def get_redis_client():
     redis_url = os.getenv("REDIS_URL")
     return redis.from_url(redis_url, decode_responses=True)
 
-def load_session(user_id: str) -> list:
+def load_session(user_id: str) -> (str, list):
     """
-    Loads session from Redis cache first. If it's a miss, loads from
-    PostgreSQL DB and caches the result in Redis.
+    Loads session (state and history) from Redis cache first.
+    If it's a miss, assumes a new conversation.
+    Returns the conversation state and history.
     """
     if redis_client:
         try:
-            # Try to load from Redis cache
             cached_session = redis_client.get(user_id)
             if cached_session:
-                return json.loads(cached_session)
+                session_data = json.loads(cached_session)
+                return session_data.get("state", "GATHERING_INFO"), session_data.get("history", [])
         except Exception as e:
             print(f"Error loading from Redis: {e}")
 
-    # If cache miss, load from PostgreSQL
-    db = SessionLocal()
-    try:
-        db_conversation = db.query(Conversation).filter(Conversation.user_id == user_id).first()
-        if db_conversation and db_conversation.history:
-            # Cache the result in Redis for next time
-            if redis_client:
-                try:
-                    redis_client.set(user_id, json.dumps(db_conversation.history), ex=86400)
-                except Exception as e:
-                    print(f"Error saving to Redis after DB read: {e}")
-            return db_conversation.history
-        return []
-    finally:
-        db.close()
+    # Default to a new conversation if nothing is found
+    return "GATHERING_INFO", []
 
-    # Save to Redis cache
+def save_session(user_id: str, state: str, conversation_history: list):
+    """
+    Saves the conversation state and history to Redis.
+    """
     if redis_client:
         try:
-            redis_client.set(user_id, json.dumps(conversation_history), ex=86400)
-        except Exception as e:
-            print(f"Error saving session to Redis: {e}")
-
-def save_session(user_id: str, conversation_history: list):
-    """
-    Saves the conversation history to both PostgreSQL for persistence
-    and Redis for caching.
-    """
-    # Save to PostgreSQL
-    db = SessionLocal()
-    try:
-        db_conversation = db.query(Conversation).filter(Conversation.user_id == user_id).first()
-        if db_conversation:
-            db_conversation.history = conversation_history
-        else:
-            db_conversation = Conversation(user_id=user_id, history=conversation_history)
-            db.add(db_conversation)
-        db.commit()
-    finally:
-        db.close()
-
-    # Save to Redis cache
-    if redis_client:
-        try:
-            redis_client.set(user_id, json.dumps(conversation_history), ex=86400)
+            session_data = {
+                "state": state,
+                "history": conversation_history
+            }
+            redis_client.set(user_id, json.dumps(session_data), ex=86400)
         except Exception as e:
             print(f"Error saving session to Redis: {e}") 

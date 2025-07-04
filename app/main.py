@@ -4,7 +4,7 @@ from flask import Flask, request
 from dotenv import load_dotenv
 from twilio.twiml.messaging_response import MessagingResponse
 
-from app.ai_service import get_ai_response
+from app.ai_service import get_ai_response, extract_flight_details_from_history
 from app.session_manager import load_session, save_session
 from app.timezone_service import get_timezone_for_city
 from app.amadeus_service import AmadeusService
@@ -16,108 +16,134 @@ app = Flask(__name__)
 amadeus_service = AmadeusService()
 
 def _format_flight_offers(user_id, flights):
-    """ Formats flight offers and stores them in Redis. """
+    """Formats flight offers into a string and saves them to Redis."""
     if not flights:
-        return "Sorry, I couldn't find any flights for your request. Would you like to try different dates?"
-    
+        return "Sorry, I couldn't find any flights for the given criteria."
+
     response_lines = ["I found a few options for you:"]
-    for i, flight in enumerate(flights, 1):
-        # Clear previous flight options for the user
-        if i == 1:
-            keys = redis_client.keys(f"flight_option:{user_id}:*")
-            if keys:
-                redis_client.delete(*keys)
-
-        price = flight['price']['total']
-        # Get the first itinerary and segment for flight details
+    for i, flight in enumerate(flights[:5], 1):
+        flight_id = f"flight_{i}"
+        
+        # Simplified flight details for demonstration
         itinerary = flight['itineraries'][0]
-        segment = itinerary['segments'][0]
-        departure_time = segment['departure']['at']
-        arrival_time = segment['arrival']['at']
-        duration = itinerary['duration'].replace('PT', '').replace('H', ' hours ').replace('M', ' minutes')
+        price = flight['price']['total']
+        
+        # Save full flight details to Redis for booking
+        if redis_client:
+            redis_key = f"{user_id}:{flight_id}"
+            redis_client.set(redis_key, json.dumps(flight), ex=3600)
 
-        line = (
-            f"{i}. Depart at {departure_time}, Arrive at {arrival_time}. "
-            f"Duration: {duration}. Price: {price} {flight['price']['currency']}"
-        )
-        response_lines.append(line)
+        response_lines.append(f"{i}. Flight to {flight['itineraries'][0]['segments'][0]['arrival']['iataCode']} for {price} {flight['price']['currency']}. (Choose {flight_id})")
 
-        # Store the full flight data in Redis for later booking
-        redis_client.set(f"flight_option:{user_id}:{i}", json.dumps(flight), ex=3600) # Expires in 1 hour
-
-    response_lines.append("\nPlease reply with the number of the flight you'd like to book (e.g., '1').")
     return "\n".join(response_lines)
 
-@app.route('/webhook', methods=['POST'])
+@app.route("/webhook", methods=['POST'])
 def webhook():
-    """Handles stateful conversations using Redis for session management."""
-    incoming_msg = request.values.get('Body', '').strip()
-    user_id = request.values.get('From', '').strip()
-    resp = MessagingResponse()
-
-    # Load previous conversation history
-    conversation_history = load_session(user_id)
-
-    # Get the new AI response and updated history
-    ai_reply, updated_history = get_ai_response(incoming_msg, conversation_history)
-
-    # Save the updated history for the next interaction
-    save_session(user_id, updated_history)
-
-    # Check if the AI returned a JSON object indicating the conversation is complete
-    try:
-        data = json.loads(ai_reply)
-        if data.get("status") == "complete":
-            # The user has confirmed the details. The slots are in the AI's previous message.
-            # History is: [..., assistant_slots, user_confirmation, assistant_complete_status]
-            # The 'updated_history' includes the final "complete" status, so we look at [-3].
-            if len(updated_history) >= 3:
-                # The message content from the assistant could be "Confirmation message\n{json...}"
-                content = updated_history[-3].get('content', '')
-                json_str = content[content.find('{'):] # Extract JSON part of the string
-                
-                try:
-                    flight_details = json.loads(json_str)
-                except json.JSONDecodeError:
-                    resp.message("I seem to have lost the flight details. Could you please start over?")
-                    return str(resp), 200, {'Content-Type': 'application/xml'}
-            else:
-                resp.message("Something went wrong. Could you please try again?")
-                return str(resp), 200, {'Content-Type': 'application/xml'}
-
-            origin_city = flight_details.get('origin')
-            destination_city = flight_details.get('destination')
-            
-            # Get IATA codes
-            origin_iata = amadeus_service.get_iata_code(origin_city)
-            destination_iata = amadeus_service.get_iata_code(destination_city)
-
-            if not origin_iata or not destination_iata:
-                resp.message("Sorry, I couldn't find one of the cities you mentioned. Please be more specific.")
-                return str(resp), 200, {'Content-Type': 'application/xml'}
-            
-            # Search for flights
-            flights = amadeus_service.search_flights(
-                origin_iata=origin_iata,
-                destination_iata=destination_iata,
-                departure_date=flight_details.get('departure_date'),
-                return_date=flight_details.get('return_date'),
-                adults=flight_details.get('number_of_travelers')
-            )
-            
-            # Format and send the flight offers to the user
-            response_message = _format_flight_offers(user_id, flights)
-            resp.message(response_message)
+    incoming_msg = request.values.get('Body', '').lower()
+    user_id = request.values.get('From', '')
+    
+    state, conversation_history = load_session(user_id)
+    
+    response_msg = ""
+    
+    if state == "GATHERING_INFO":
+        ai_response, conversation_history = get_ai_response(incoming_msg, conversation_history)
+        
+        # Check if the AI has finished gathering information
+        if "[INFO_COMPLETE]" in ai_response:
+            response_msg = ai_response.replace("[INFO_COMPLETE]", "").strip()
+            state = "AWAITING_CONFIRMATION"
         else:
-            # It's a regular chat message from the AI (e.g., asking a question or for confirmation)
-            resp.message(ai_reply)
+            response_msg = ai_response
+            
+    elif state == "AWAITING_CONFIRMATION":
+        if "yes" in incoming_msg or "correct" in incoming_msg:
+            # User confirmed, now extract details and search for flights
+            flight_details = extract_flight_details_from_history(conversation_history)
+            
+            if flight_details:
+                origin_iata = amadeus_service.get_iata_code(flight_details.get('origin'))
+                destination_iata = amadeus_service.get_iata_code(flight_details.get('destination'))
 
-    except (json.JSONDecodeError, TypeError):
-        # If it's not JSON, it's the AI asking a question or confirming slots.
-        # This will include the flight details in a JSON block for the user to confirm.
-        resp.message(ai_reply)
+                if origin_iata and destination_iata:
+                    flights = amadeus_service.search_flights(
+                        origin_iata=origin_iata,
+                        destination_iata=destination_iata,
+                        departure_date=flight_details.get('departure_date'),
+                        return_date=flight_details.get('return_date'),
+                        adults=str(flight_details.get('number_of_travelers', '1'))
+                    )
+                    response_msg = _format_flight_offers(user_id, flights)
+                    state = "FLIGHT_SELECTION" # Next state
+                else:
+                    response_msg = "I'm sorry, I couldn't find the airport codes for the cities you provided. Could you please be more specific?"
+                    state = "GATHERING_INFO" # Go back to gathering
+            else:
+                response_msg = "I'm sorry, I had trouble understanding the flight details. Let's try again."
+                state = "GATHERING_INFO"
+        else:
+            # User wants to correct information
+            response_msg, conversation_history = get_ai_response(incoming_msg, conversation_history)
+            state = "GATHERING_INFO"
 
+    save_session(user_id, state, conversation_history)
+
+    resp = MessagingResponse()
+    resp.message(response_msg)
     return str(resp), 200, {'Content-Type': 'application/xml'}
 
 if __name__ == "__main__":
-    app.run(debug=True) 
+    # Temporary test block to bypass pytest issues
+    print("--- RUNNING TEMPORARY VALIDATION SCRIPT ---")
+    
+    # Simulate the conversation flow
+    user_id = "test_user_123"
+    
+    # Turn 1: Initial message
+    print("\n--- Turn 1: Initial Query ---")
+    initial_message = "Hi, I want to book a one-way flight for John Doe from New York to London on 2024-12-25 for 1 adult."
+    ai_reply_1, history_1 = get_ai_response(initial_message, [])
+    print(f"AI Reply 1 (Confirmation):\n{ai_reply_1}")
+
+    # Turn 2: User confirmation
+    print("\n--- Turn 2: User Confirmation ---")
+    ai_reply_2, history_2 = get_ai_response("Yes, that's correct.", history_1)
+    print(f"AI Reply 2 (Trigger phrase):\n{ai_reply_2}")
+
+    # Turn 3: Flight Search Logic
+    print("\n--- Turn 3: JSON Extraction and Flight Search ---")
+    if "start the search" in ai_reply_2:
+        print("Trigger phrase detected. Extracting details...")
+        flight_details = extract_flight_details_from_history(history_2)
+        
+        if flight_details:
+            print(f"Successfully extracted flight details: {flight_details}")
+
+            origin_iata = amadeus_service.get_iata_code(flight_details.get('origin'))
+            destination_iata = amadeus_service.get_iata_code(flight_details.get('destination'))
+            print(f"Found IATA codes: Origin={origin_iata}, Destination={destination_iata}")
+
+            if origin_iata and destination_iata:
+                flights = amadeus_service.search_flights(
+                    origin_iata=origin_iata,
+                    destination_iata=destination_iata,
+                    departure_date=flight_details.get('departure_date'),
+                    return_date=flight_details.get('return_date'),
+                    adults=str(flight_details.get('number_of_travelers', '1'))
+                )
+                
+                if flights:
+                    formatted_flights = _format_flight_offers(user_id, flights)
+                    print("\n--- Flight Search Result ---")
+                    print(formatted_flights)
+                else:
+                    print("\n--- Flight Search Result ---")
+                    print("Amadeus service returned no flights for the given criteria.")
+            else:
+                print("Could not find IATA codes for one or both cities.")
+        else:
+            print("Failed to extract flight details from the conversation.")
+    else:
+        print("Trigger phrase not detected in AI response.")
+
+    print("\n--- TEMPORARY VALIDATION SCRIPT COMPLETE ---") 

@@ -33,18 +33,19 @@ class AmadeusService:
         Search for flight offers.
         """
         try:
+            # Construct the dictionary of parameters for the API call
             params = {
                 'originLocationCode': origin_iata,
                 'destinationLocationCode': destination_iata,
                 'departureDate': departure_date,
                 'adults': adults,
-                'nonStop': 'true',
                 'currencyCode': 'USD',
-                'max': 5 # Limit to 5 results for now
+                'max': 5
             }
             if return_date:
                 params['returnDate'] = return_date
-
+            
+            print(f"DEBUG: Amadeus search_flights params: {params}") # DEBUG PRINT
             response = self.client.shopping.flight_offers_search.get(**params)
             return response.data
         except ResponseError as error:
