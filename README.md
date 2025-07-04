@@ -48,6 +48,13 @@ So far, we have completed the initial project setup, created a basic web server,
 - Implemented a "cache-aside" pattern in `session_manager.py` to check Redis first, fall back to Postgres on a miss, and write to both on save.
 - Wrote and passed a comprehensive end-to-end test mocking both database connections to verify the new architecture.
 
+### Phase 6: Timezone Handling
+- Installed `pytz`, `timezonefinder`, and `geopy` libraries.
+- Created a `timezone_service.py` to infer an IANA timezone (e.g., "America/New_York") from a city name.
+- Integrated the service into the main webhook to detect the user's timezone based on their origin city.
+- Updated the confirmation message to include the detected timezone, providing better feedback to the user.
+- Wrote and passed a unit test with a mock to verify the timezone integration.
+
 ## Next Steps
 
-The next phase is to handle timezones correctly to ensure flight searches are accurate. After that, we will integrate a real flight search API. 
+The next and most exciting phase is to integrate a real flight search API. Once all the details are collected, the agent will query an external service to find live flight options. 

@@ -6,6 +6,7 @@ from twilio.twiml.messaging_response import MessagingResponse
 
 from app.ai_service import get_ai_response
 from app.session_manager import load_session, save_session
+from app.timezone_service import get_timezone_for_city
 
 load_dotenv()
 
@@ -30,13 +31,20 @@ def webhook():
     # Check if the AI returned a JSON object with flight details
     try:
         flight_details = json.loads(ai_reply)
-        # If it's a JSON, format a confirmation message
+        origin_city = flight_details.get('origin')
+        
+        # Try to get the timezone
+        timezone = get_timezone_for_city(origin_city) if origin_city else "Unknown"
+        
+        # Format a confirmation message
         confirmation_message = (
-            "Great! I have all the details. "
-            f"Flying from {flight_details['origin']} to {flight_details['destination']} "
-            f"on {flight_details['departure_date']} for {flight_details['number_of_travelers']} people."
-            # We will add flight search logic here in the next phase.
+            f"Great! I have all the details. "
+            f"Flying from {flight_details.get('origin')} to {flight_details.get('destination')} "
+            f"on {flight_details.get('departure_date')} for {flight_details.get('number_of_travelers')} people."
         )
+        if timezone and timezone != "Unknown":
+             confirmation_message += f" (Timezone detected: {timezone})"
+        
         resp.message(confirmation_message)
     except (json.JSONDecodeError, TypeError, KeyError):
         # If it's not JSON, it's a regular chat message

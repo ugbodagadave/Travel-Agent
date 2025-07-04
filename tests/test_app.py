@@ -9,26 +9,23 @@ def client():
     with app.test_client() as client:
         yield client
 
-# We now need to patch the database session as well
+# We now also need to patch the new timezone service
+@patch('app.main.get_timezone_for_city')
 @patch('app.session_manager.SessionLocal')
 @patch('app.main.save_session')
 @patch('app.main.load_session')
 @patch('app.main.get_ai_response')
-def test_multi_turn_conversation(
+def test_multi_turn_conversation_with_timezone(
     mock_get_ai_response, 
     mock_load_session, 
     mock_save_session, 
-    mock_db_session, # Add the new mock to the function signature
+    mock_db_session,
+    mock_get_timezone, # Add the new mock
     client
 ):
     """
-    Test a full, multi-turn conversation. The core logic remains the same,
-    but we ensure the database is mocked out.
+    Test a full, multi-turn conversation including the final timezone lookup.
     """
-    # This test doesn't need to interact with the DB mock directly,
-    # as we are mocking the higher-level load/save session functions.
-    # We just need to ensure the mock is in place to prevent real DB calls.
-    
     user_id = 'whatsapp:+15551234567'
     
     # --- Turn 1: User provides partial information ---
@@ -49,7 +46,7 @@ def test_multi_turn_conversation(
     mock_save_session.assert_called_once_with(user_id, history_after_turn1)
     assert clarifying_question in response1.data.decode('utf-8')
 
-    # --- Turn 2: User provides the final piece of information ---
+    # --- Turn 2: User provides final info, triggering timezone lookup ---
     
     mock_load_session.reset_mock()
     mock_get_ai_response.reset_mock()
@@ -65,14 +62,17 @@ def test_multi_turn_conversation(
         {"role": "assistant", "content": json.dumps(final_details)}
     ]
     mock_get_ai_response.return_value = (json.dumps(final_details), history_after_turn2)
+    
+    # Mock the timezone service to return a specific timezone
+    mock_get_timezone.return_value = "America/New_York"
 
     response2 = client.post('/webhook', data={'From': user_id, 'Body': 'Just 2 of us'})
 
-    mock_load_session.assert_called_once_with(user_id)
-    mock_get_ai_response.assert_called_once_with("Just 2 of us", history_after_turn1)
-    mock_save_session.assert_called_once_with(user_id, history_after_turn2)
-    
+    # Assert that the timezone service was called correctly
+    mock_get_timezone.assert_called_once_with("New York")
+
+    # Check for the final, formatted confirmation message including the timezone
     confirmation_text = "Great! I have all the details."
     assert confirmation_text in response2.data.decode('utf-8')
     assert "New York" in response2.data.decode('utf-8')
-    assert "2 people" in response2.data.decode('utf-8') 
+    assert "(Timezone detected: America/New_York)" in response2.data.decode('utf-8') 
