@@ -1,7 +1,7 @@
 import os
 import redis
 import json
-from .database import SessionLocal, Conversation
+from .database import SessionLocal, Conversation, redis_client
 
 def get_redis_client():
     """Initializes and returns a Redis client."""
@@ -14,14 +14,14 @@ def load_session(user_id: str) -> list:
     Loads session from Redis cache first. If it's a miss, loads from
     PostgreSQL DB and caches the result in Redis.
     """
-    try:
-        # Try to load from Redis cache
-        redis_client = get_redis_client()
-        cached_session = redis_client.get(user_id)
-        if cached_session:
-            return json.loads(cached_session)
-    except Exception as e:
-        print(f"Error loading from Redis: {e}")
+    if redis_client:
+        try:
+            # Try to load from Redis cache
+            cached_session = redis_client.get(user_id)
+            if cached_session:
+                return json.loads(cached_session)
+        except Exception as e:
+            print(f"Error loading from Redis: {e}")
 
     # If cache miss, load from PostgreSQL
     db = SessionLocal()
@@ -29,14 +29,22 @@ def load_session(user_id: str) -> list:
         db_conversation = db.query(Conversation).filter(Conversation.user_id == user_id).first()
         if db_conversation and db_conversation.history:
             # Cache the result in Redis for next time
-            try:
-                redis_client.set(user_id, json.dumps(db_conversation.history), ex=86400)
-            except Exception as e:
-                print(f"Error saving to Redis after DB read: {e}")
+            if redis_client:
+                try:
+                    redis_client.set(user_id, json.dumps(db_conversation.history), ex=86400)
+                except Exception as e:
+                    print(f"Error saving to Redis after DB read: {e}")
             return db_conversation.history
         return []
     finally:
         db.close()
+
+    # Save to Redis cache
+    if redis_client:
+        try:
+            redis_client.set(user_id, json.dumps(conversation_history), ex=86400)
+        except Exception as e:
+            print(f"Error saving session to Redis: {e}")
 
 def save_session(user_id: str, conversation_history: list):
     """
@@ -57,8 +65,8 @@ def save_session(user_id: str, conversation_history: list):
         db.close()
 
     # Save to Redis cache
-    try:
-        redis_client = get_redis_client()
-        redis_client.set(user_id, json.dumps(conversation_history), ex=86400)
-    except Exception as e:
-        print(f"Error saving session to Redis: {e}") 
+    if redis_client:
+        try:
+            redis_client.set(user_id, json.dumps(conversation_history), ex=86400)
+        except Exception as e:
+            print(f"Error saving session to Redis: {e}") 

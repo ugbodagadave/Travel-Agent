@@ -200,32 +200,104 @@ This document outlines the development plan for the AI Travel Agent project. We 
 
 ---
 
-## Phase 7: Flight Search Integration
+## ~~Phase 7: Flight Search Integration~~ (Deprecated)
 
-### Feature/Build
-- Once all necessary slots are filled, query a flight search API and return the results.
+- **This phase has been replaced by the Amadeus & Stripe Integration phases below.**
+
+---
+
+## Phase 7: Amadeus Flight Search Integration
+
+- **Goal:** Find real flight offers based on the user's request and allow them to select one.
+- **Credentials:** Amadeus API Key and Amadeus API Secret will be required.
 
 ### Tests
-- Mock the flight search API.
-- Write a test to ensure that once the conversation is complete, the collected slot data is used to call the flight search API with the correct parameters.
-- Write a test to ensure the flight API's JSON response is parsed and formatted into a user-friendly string for WhatsApp.
+- Create `tests/test_amadeus_service.py`.
+- Mock the Amadeus API client.
+- Test the IATA code lookup for cities.
+- Test that the flight search function calls the correct Amadeus endpoint with the correct parameters.
+- Test the parsing and formatting of the flight offer results.
 
 ### Implementation Steps
-1.  **Choose and Register for API:** We'll start with the Skyscanner API as per the PRD.
-2.  **Credential Prompt:** I will ask you for your **Skyscanner API Key**.
-3.  **Create `app/flight_service.py`:**
-    - Implement a function to call the flight search API with the trip details.
-    - Implement a function to format the results.
-4.  **Update Conversation Flow:**
-    - In the main logic, once all slots are filled, call the flight search service.
-    - Send the formatted flight options back to the user.
+1.  **Install SDK:** Add `amadeus` to `requirements.txt` and install it.
+2.  **Add Credentials to `.env`:** Add `AMADEUS_CLIENT_ID` and `AMADEUS_CLIENT_SECRET`.
+3.  **Create `app/amadeus_service.py`:** This new module will encapsulate all interaction with the Amadeus API.
+4.  **Implement IATA Code Lookup:** Create a function to call the Amadeus `reference_data.locations` endpoint to convert origin/destination city names to IATA codes.
+5.  **Implement Flight Offer Search:** Create a function to call the `shopping.flight_offers_search.get` endpoint.
+6.  **Update `app/main.py`:**
+    - Once the AI confirms all slots are filled, call the new `amadeus_service.search_flights` function.
+    - Format the best 3-5 flight options and send them to the user in a numbered list.
+    - Store the full JSON data for each presented offer in Redis with a temporary unique ID (e.g., `flight_option:USER_PHONE_NUMBER:1`).
+7.  **Update `app/ai_service.py`:** The system prompt for the AI must be updated. It should be instructed that once it has gathered all flight details, its final output should be a simple JSON object like `{"status": "complete"}` and nothing else. This will be the trigger for our Flask app to initiate the flight search. It should no longer be responsible for creating the summary message itself.
 
 ### Testing
 - Run `pytest`.
 
 ---
 
-## Phase 8: Deployment to Render
+## Phase 8: Stripe Payment Initiation
+
+- **Goal:** When a user selects a flight, generate and send them a secure Stripe payment link.
+- **Credentials:** Stripe Publishable Key and Stripe Secret Key will be required.
+
+### Tests
+- Create `tests/test_payment_service.py`.
+- Mock the Stripe API client.
+- Test that the `create_checkout_session` function correctly constructs the Stripe session with:
+    - The correct price and currency from the flight offer.
+    - The `success_url` and `cancel_url`.
+    - A `metadata` object containing our internal `conversation_id` and `flight_option_id`.
+
+### Implementation Steps
+1.  **Install SDK:** Add `stripe` to `requirements.txt`.
+2.  **Add Credentials to `.env`:** Add `STRIPE_PUBLISHABLE_KEY` and `STRIPE_SECRET_KEY`.
+3.  **Create `app/payment_service.py`:** This new module will handle all Stripe interactions.
+4.  **Implement `create_checkout_session`:**
+    - The function will accept the chosen flight offer object.
+    - It will create a Stripe Checkout Session.
+    - **Crucially, it will populate the `metadata` parameter** with the `conversation_id` and the temporary `flight_option_id` to link the payment back to our internal state.
+5.  **Update `app/main.py`:**
+    - When the user replies with their flight selection (e.g., "book option 1"), retrieve the full flight data from Redis.
+    - Call `payment_service.create_checkout_session` to get a Stripe URL.
+    - Send the Stripe Checkout URL to the user on WhatsApp.
+
+### Testing
+- Run `pytest`.
+
+---
+
+## Phase 9: Booking Confirmation via Stripe Webhook
+
+- **Goal:** Listen for successful payments from Stripe, formally book the flight with Amadeus, and notify the user.
+
+### Tests
+- Update `tests/test_app.py`.
+- Write a new end-to-end test for the `/stripe-webhook` endpoint.
+- The test will simulate a `checkout.session.completed` request from Stripe.
+- It will mock the database and Redis to provide the necessary conversation and flight data based on the metadata in the simulated request.
+- It will mock the `amadeus_service.book_flight` call and assert that it's called with the correct data.
+- It will assert that a final confirmation message is sent via the mocked Twilio client.
+
+### Implementation Steps
+1.  **Add Traveler Info to Slots:** Update the AI prompt in `ai_service.py` to also require the user's "Full Name as on Passport". This must be stored in the session.
+2.  **Create `/stripe-webhook` Endpoint:** Add a new `POST` endpoint in `app/main.py`. This is the URL we will provide to Stripe.
+3.  **Handle `checkout.session.completed` Event:** The webhook will:
+    a. Securely verify the event signature using the webhook secret to ensure it came from Stripe.
+    b. Extract the `metadata` object from the event data.
+    c. Use the IDs from the metadata to retrieve the conversation history from PostgreSQL and the chosen flight offer from Redis.
+4.  **Implement `book_flight` in `amadeus_service.py`:**
+    - This new function will take the flight offer JSON and traveler details.
+    - It will call the Amadeus `booking.flight_orders.post` endpoint to finalize the booking.
+5.  **Trigger Booking & Final Confirmation:**
+    - In the webhook, after retrieving all data, call `amadeus_service.book_flight`.
+    - If successful, send a final confirmation message to the user with their booking reference.
+
+### Testing
+- Run `pytest`.
+
+---
+
+## Phase 10: Deployment to Render
 
 ### Feature/Build
 - Prepare the application for deployment on a live server.
@@ -237,8 +309,10 @@ This document outlines the development plan for the AI Travel Agent project. We 
 4.  **GitHub and Render Setup:**
     - I will instruct you to push the code to a new GitHub repository.
     - I will guide you on creating a new Web Service on Render and linking it to your GitHub repo.
-5.  **Environment Variables:** I will instruct you on how to add all the API keys and secrets (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `IO_API_KEY`, `SKYSCANNER_API_KEY`, `REDIS_URL`) to the Render environment.
-6.  **Final Webhook Configuration:** Update the Twilio WhatsApp Sandbox webhook URL to point to your live Render application URL.
+5.  **Environment Variables:** I will instruct you on how to add all the API keys and secrets (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `IO_API_KEY`, `POSTGRES_URL`, `REDIS_URL`, `AMADEUS_CLIENT_ID`, `AMADEUS_CLIENT_SECRET`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`) to the Render environment.
+6.  **Final Webhook Configuration:**
+    - Update the Twilio WhatsApp Sandbox webhook URL to point to your live Render application's `/webhook` endpoint.
+    - Create a new webhook endpoint in your Stripe dashboard and point it to your live Render application's `/stripe-webhook` endpoint.
 
 ### Testing
 - Manually send a message to your Twilio WhatsApp number to perform an end-to-end test of the live application. 

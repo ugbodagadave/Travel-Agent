@@ -21,8 +21,9 @@ This project builds an AI-powered travel agent accessible via WhatsApp. The agen
 - **Hosting:** [Render](https://render.com/) free tier Web Service
 - **WhatsApp Integration:** [Twilio WhatsApp Sandbox](https://www.twilio.com/docs/whatsapp/sandbox)
 - **AI Conversation Layer:** [IO Intelligence Agents API](https://docs.io.net/reference/agents/overview)
-- **Flight Data API:** Skyscanner Flights API (or Amadeus Self-Service / Kiwi Tequila API)
-- **Database:** Postgres or Redis (Render free tier)
+- **Flight Data API:** [Amadeus Self-Service APIs](https://developers.amadeus.com/)
+- **Payment Processing API:** [Stripe](https://stripe.com/)
+- **Database:** Postgres (Persistent Storage) & Redis (Session Caching)
 
 ---
 
@@ -79,21 +80,31 @@ This project builds an AI-powered travel agent accessible via WhatsApp. The agen
 
 ---
 
-### 5. Flight Search Integration
+### 5. Flight Search & Selection
 
-- Register for Skyscanner Flights API:
-- [Skyscanner Flights API Documentation](https://developers.skyscanner.net/docs/flights-live-prices)
-- **Prompt user to obtain Skyscanner API Key.**
-- Alternatively, register for:
-- [Amadeus Self-Service APIs](https://developers.amadeus.com/) *(requires free developer account)*.
-- [Kiwi Tequila API](https://tequila.kiwi.com/portal/login) *(requires account)*.
+- Register for a free [Amadeus for Developers](https://developers.amadeus.com/) account.
+- **Prompt user to obtain Amadeus API Key and API Secret.**
 - Use the API to:
-- Search flights with parameters collected from the user.
-- Filter by time-of-day preference.
-- Retrieve departure time, duration, and price.
-- Format results for WhatsApp:
-- "Option 1: Depart 8:00 AM, Duration 7h, Price $350."
-- Provide a checkout URL for each option.
+  - Convert user's city names to IATA codes.
+  - Search flights with parameters collected from the user.
+  - Filter by time-of-day preference.
+  - Retrieve departure time, duration, and price.
+  - Format results for WhatsApp:
+    - "Option 1: Depart 8:00 AM, Duration 7h, Price $350."
+  - Store the selected flight offer to be used in the payment and booking phase.
+
+---
+
+### 5a. Payment & Booking
+
+- Create a [Stripe account](https://stripe.com/).
+- **Prompt user to obtain Stripe Publishable Key and Secret Key.**
+- After the user selects a flight, generate a Stripe Checkout session.
+- The session will contain metadata linking it to the user's conversation and selected flight.
+- Send the user the secure Stripe Checkout URL to complete payment.
+- Create a Stripe Webhook to listen for successful payment events.
+- When a payment is successful, use the Amadeus API to formally book the flight.
+- Send a final booking confirmation to the user.
 
 ---
 
@@ -130,7 +141,13 @@ This project builds an AI-powered travel agent accessible via WhatsApp. The agen
 - `IO_API_KEY`
 - `TWILIO_ACCOUNT_SID`
 - `TWILIO_AUTH_TOKEN`
-- `SKYSCANNER_API_KEY`
+- `POSTGRES_URL`
+- `REDIS_URL`
+- `AMADEUS_CLIENT_ID`
+- `AMADEUS_CLIENT_SECRET`
+- `STRIPE_PUBLISHABLE_KEY`
+- `STRIPE_SECRET_KEY`
+- `STRIPE_WEBHOOK_SECRET`
 - Ensure your webhook URL is HTTPS and public.
 
 ---
@@ -172,9 +189,8 @@ This project builds an AI-powered travel agent accessible via WhatsApp. The agen
 - [Twilio WhatsApp Sandbox](https://www.twilio.com/docs/whatsapp/sandbox)
 - [Twilio Python SDK Guide](https://www.twilio.com/docs/whatsapp/tutorial/send-whatsapp-notification-python)
 - [Render Flask Deployment](https://render.com/docs/deploy-flask)
-- [Skyscanner Flights API Docs](https://developers.skyscanner.net/docs/flights-live-prices)
 - [Amadeus Self-Service APIs](https://developers.amadeus.com/)
-- [Kiwi Tequila API](https://tequila.kiwi.com/portal/login)
+- [Stripe Documentation](https://stripe.com/docs)
 
 ---
 
