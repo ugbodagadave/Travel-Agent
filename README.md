@@ -1,6 +1,61 @@
 # AI Travel Agent
 
-This project is an AI-powered travel agent that can be used via WhatsApp to book flights.
+This project is an AI-powered travel agent delivered via a WhatsApp chatbot interface. It allows users to find and book flights through a natural conversational experience.
+
+## Features (Implemented)
+
+*   **Conversational AI:** Uses the IO Intelligence API to understand user requests in natural language.
+*   **Stateful Sessions:** Manages multi-turn conversations using Redis, allowing users to provide information incrementally.
+*   **Finite State Machine:** A robust state machine controls the conversation flow from gathering information to confirmation.
+*   **Live Flight Search:** Integrates with the Amadeus API to find real-time flight offers based on the user's confirmed details.
+*   **Test-Driven Development:** A comprehensive test suite using `pytest` and `unittest.mock` ensures code quality and reliability.
+
+## Project Setup
+
+1.  **Clone the Repository:**
+    ```bash
+    git clone <your-repository-url>
+    cd Travel-Agent
+    ```
+
+2.  **Create a Virtual Environment:**
+    ```bash
+    python -m venv venv
+    ```
+
+3.  **Activate the Environment:**
+    *   **Windows:** `venv\Scripts\activate`
+    *   **macOS/Linux:** `source venv/bin/activate`
+
+4.  **Install Dependencies:**
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+5.  **Set Up Environment Variables:**
+    Create a file named `.env` in the root of the project and add the following keys. You will need API keys from IO Intelligence, Amadeus, and Redis.
+
+    ```
+    # IO Intelligence API Key
+    IO_API_KEY=your_io_api_key
+
+    # Amadeus API Credentials
+    AMADEUS_CLIENT_ID=your_amadeus_client_id
+    AMADEUS_CLIENT_SECRET=your_amadeus_client_secret
+
+    # Redis Connection URL
+    REDIS_URL=your_redis_connection_url
+    ```
+
+## Running Tests
+
+To ensure everything is configured correctly, run the test suite:
+
+```bash
+pytest
+```
+
+All tests should pass if the setup is correct.
 
 ## Current Progress
 
