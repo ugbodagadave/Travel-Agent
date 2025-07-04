@@ -149,6 +149,35 @@ This document outlines the development plan for the AI Travel Agent project. We 
 
 ---
 
+## Phase 5a: Add Persistent Storage with PostgreSQL
+
+### Feature/Build
+- Integrate a PostgreSQL database as the primary, durable storage for conversation history.
+- Keep Redis as a high-speed caching layer for active sessions to reduce database load and improve latency.
+
+### Tests
+- Update tests to mock both the PostgreSQL and Redis clients.
+- Write a test to verify the "cache-aside" logic:
+    - On a cache miss (session not in Redis), verify the app fetches from Postgres, saves to Redis, and then proceeds.
+    - On a cache hit, verify the app uses the Redis data directly without querying Postgres.
+- Write a test to verify that session data is always written to PostgreSQL.
+
+### Implementation Steps
+1.  **Get Credentials:** I will ask you for your PostgreSQL Internal Database URL from Render.
+2.  **Install DB Driver:** `pip install psycopg2-binary SQLAlchemy`
+3.  **Create `app/database.py`:**
+    - Set up the database connection using SQLAlchemy.
+    - Define a `Conversation` table/model to store the history.
+    - Create a function to initialize the database table.
+4.  **Update `app/session_manager.py`:**
+    - Modify `load_session` to check Redis first, then fall back to Postgres if not found (and cache the result in Redis).
+    - Modify `save_session` to write to both Postgres and Redis.
+
+### Testing
+- Run `pytest`.
+
+---
+
 ## Phase 6: Timezone Handling
 
 ### Feature/Build

@@ -1,0 +1,35 @@
+import os
+from dotenv import load_dotenv
+from sqlalchemy import create_engine, Column, String, JSON, Text
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.declarative import declarative_base
+
+# Load environment variables from .env file
+load_dotenv()
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+# Create the database engine
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+# Define the Conversation model which corresponds to our database table
+class Conversation(Base):
+    __tablename__ = "conversations"
+
+    user_id = Column(String, primary_key=True, index=True)
+    history = Column(JSON)
+
+def init_db():
+    """
+    Initializes the database by creating tables if they don't exist.
+    """
+    Base.metadata.create_all(bind=engine)
+
+# To create the table initially, you might run this from a separate script
+# or integrate it into your app's startup sequence.
+if __name__ == "__main__":
+    print("Initializing database...")
+    init_db()
+    print("Database initialized.") 

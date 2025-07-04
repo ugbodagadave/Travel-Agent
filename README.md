@@ -37,10 +37,16 @@ So far, we have completed the initial project setup, created a basic web server,
 
 ### Phase 5: Session Persistence with Redis
 - Installed the `redis` library.
-- Set up a free Redis instance on Render.
-- Created a `session_manager.py` to handle loading and saving conversation history.
-- Integrated the session manager into the main webhook, enabling stateful, multi-turn conversations.
-- Wrote and passed a comprehensive end-to-end test to verify the entire conversation flow with session management.
+- Set up a free Redis instance on Render for caching.
+
+### Phase 5a: Persistent Storage with PostgreSQL
+- Identified the limitation of non-persistent free Redis instances for production use.
+- Implemented a robust, dual-storage solution:
+    - **PostgreSQL**: Added as the primary, durable database for all conversation history. Installed `psycopg2-binary` and `SQLAlchemy`.
+    - **Redis Cache**: Kept Redis as a high-speed caching layer to improve performance.
+- Created a `database.py` module to manage the database connection and schema.
+- Implemented a "cache-aside" pattern in `session_manager.py` to check Redis first, fall back to Postgres on a miss, and write to both on save.
+- Wrote and passed a comprehensive end-to-end test mocking both database connections to verify the new architecture.
 
 ## Next Steps
 
