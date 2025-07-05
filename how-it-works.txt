@@ -1,0 +1,37 @@
+How the AI Travel Agent Works: A Simple Guide
+
+This document explains the workflow of the AI Travel Agent from a user's perspective, focusing on the technologies that make it possible.
+
+---
+### The Conversation Flow
+
+**1. You Send a Message**
+It all starts when you send a WhatsApp message to the agent's number. This could be anything from "Hi" to "I want to book a flight to London."
+*   **Technology Used:** The **Twilio API** receives your WhatsApp message and securely forwards it to our application.
+
+**2. The AI Understands Your Request**
+Our application takes your message and sends it to an AI "brain." The AI's job is to understand what you want and figure out the key details like your destination, origin, travel dates, and how many people are flying. If it's missing a detail, it will ask a clarifying question.
+*   **Technology Used:** The **IO Intelligence API** provides the powerful natural language understanding to have a conversation and extract important information.
+
+**3. Finding Your Flight**
+Once the AI has all the necessary details and you've confirmed they are correct, the application connects to a global flight database to find real, live flight options for you.
+*   **Technology Used:** The **Amadeus API** provides access to real-time flight data from airlines around the world.
+
+**4. You Choose and Pay**
+The agent sends you the best flight options as a simple, numbered list. When you reply with the number of the flight you want, the system generates a secure payment link for you.
+*   **Technology Used:** The **Stripe API** creates a secure, hosted checkout page for you to enter your payment details safely.
+
+**5. Booking is Confirmed... Automatically!**
+After you complete the payment on the Stripe page, their system sends an automatic, behind-the-scenes notification back to our application. Once our app receives this "payment successful" signal, it asks for your final details (like your full name) and then automatically books your selected flight.
+*   **Technology Used:** **Stripe Webhooks** send the payment confirmation, and the **Amadeus API** is used again to make the final, official booking.
+
+**6. You Get Your Confirmation**
+The moment the booking is complete, you receive a final WhatsApp message with your booking ID and confirmation details.
+
+---
+### How Does It Remember Me?
+
+The agent can have conversations with thousands of users at once and never gets confused. This is because it saves the context of your specific conversation.
+*   **Technology Used:**
+    *   **Redis** is a super-fast, in-memory database that works like the agent's short-term memory, keeping active conversations snappy and responsive.
+    *   **PostgreSQL** is a powerful, long-term database that securely stores your conversation history so you can even pause and come back later without starting over. 
