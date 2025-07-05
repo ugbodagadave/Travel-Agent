@@ -1,14 +1,14 @@
 services:
-  # Main web service for the Flask application
+  # Web service for the Flask application
   - type: web
     name: ai-travel-agent
-    env: python
-    plan: free # Deploys on Render's free instance type
+    runtime: python
+    plan: free
     buildCommand: "pip install -r requirements.txt"
     startCommand: "gunicorn app.main:app"
     envVars:
       - key: PYTHON_VERSION
-        value: "3.11.4" # Specify a Python version
+        value: "3.11.4"
       - key: DATABASE_URL
         fromDatabase:
           name: travel-agent-db
@@ -41,14 +41,13 @@ services:
       - key: STRIPE_WEBHOOK_SECRET
         sync: false
 
-  # PostgreSQL Database
-  - type: db
-    name: travel-agent-db
-    engine: postgres
-    plan: free
-    postgresMajorVersion: 14
-
-  # Redis Instance
+  # Redis Instance for caching
   - type: redis
     name: travel-agent-redis
-    plan: free 
+    plan: free
+
+# PostgreSQL Database
+databases:
+  - name: travel-agent-db
+    plan: free
+    postgresMajorVersion: 14 
