@@ -7,7 +7,7 @@ import stripe
 from twilio.rest import Client as TwilioClient
 
 from app.ai_service import get_ai_response, extract_flight_details_from_history, extract_traveler_details
-from app.session_manager import load_session, save_session
+from app.new_session_manager import load_session, save_session
 from app.timezone_service import get_timezone_for_city
 from app.amadeus_service import AmadeusService
 from app.payment_service import create_checkout_session
@@ -139,6 +139,11 @@ def webhook():
     elif state == "GATHERING_BOOKING_DETAILS":
         selected_flight = flight_offers[0]
         traveler_details = extract_traveler_details(incoming_msg)
+
+        with open("debug_output.txt", "w") as f:
+            f.write(f"State: {state}\n")
+            f.write(f"Flight Offers: {'Exists' if flight_offers else 'None'}\n")
+            f.write(f"Traveler Details: {traveler_details}\n")
 
         if traveler_details and "fullName" in traveler_details and "dateOfBirth" in traveler_details:
             full_name = traveler_details["fullName"].split()
