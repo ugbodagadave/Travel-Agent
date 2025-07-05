@@ -6,8 +6,9 @@ This project is an AI-powered travel agent accessible via WhatsApp. It uses natu
 - **WhatsApp Integration**: Communicates with users through the Twilio WhatsApp API.
 - **Natural Language Understanding**: Leverages the IO Intelligence API to understand conversations, manage a state machine (e.g., `GATHERING_INFO`, `FLIGHT_SELECTION`), and extract structured data like destinations, dates, and traveler details.
 - **Live Flight Search**: Integrates with the Amadeus Self-Service API to search for real-time flight offers based on the user's criteria.
-- **Live Flight Booking**: Allows users to select a flight and books it directly via the Amadeus API, returning a real booking confirmation.
-- **Session Persistence**: Maintains conversation state for each user.
+- **Payment Processing**: Creates secure Stripe Checkout links when a user selects a flight and confirms the payment via webhooks.
+- **Live Flight Booking**: Allows users to select a flight and books it directly via the Amadeus API, returning a real booking confirmation *after* a successful payment.
+- **Session Persistence**: Maintains conversation state for each user using Redis.
 
 ## Core Technologies
 - **Programming Language:** Python 3.x
@@ -15,6 +16,8 @@ This project is an AI-powered travel agent accessible via WhatsApp. It uses natu
 - **WhatsApp Integration:** Twilio WhatsApp Sandbox
 - **AI Conversation Layer:** IO Intelligence API
 - **Flight Data API:** Amadeus Self-Service APIs
+- **Payment Processing API:** Stripe
+- **Session Caching:** Redis
 - **Testing**: Pytest
 
 ## Project Structure
@@ -22,6 +25,7 @@ This project is an AI-powered travel agent accessible via WhatsApp. It uses natu
 ├── app/
 │   ├── ai_service.py         # Handles all IO Intelligence API interactions
 │   ├── amadeus_service.py    # Handles all Amadeus API interactions
+│   ├── payment_service.py    # Handles all Stripe API interactions
 │   ├── main.py               # Main Flask application, routes, and webhook logic
 │   └── session_manager.py    # Manages user session state
 ├── tests/
@@ -65,16 +69,19 @@ This project is an AI-powered travel agent accessible via WhatsApp. It uses natu
     DATABASE_URL=
     AMADEUS_CLIENT_ID=
     AMADEUS_CLIENT_SECRET=
+    STRIPE_PUBLISHABLE_KEY=
+    STRIPE_SECRET_KEY=
+    STRIPE_WEBHOOK_SECRET=
+    TWILIO_PHONE_NUMBER=
     ```
 
 ## Running Tests
 To ensure everything is configured correctly, run the test suite:
 ```bash
-pytest -s
+pytest -sv
 ```
 
 ## Next Steps
-The next major feature is to integrate **Stripe** for payment processing. This will involve:
-1. Generating a Stripe Checkout link when a user selects a flight.
-2. Creating a webhook to listen for successful payments.
-3. Triggering the final Amadeus booking only after a payment is confirmed. 
+The next major phases are:
+1.  **Persistent Storage**: Integrate a PostgreSQL database to provide long-term, durable storage for conversation history, complementing the Redis cache.
+2.  **Deployment**: Prepare the application for production and deploy it to a live environment on Render. 

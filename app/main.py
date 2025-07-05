@@ -3,6 +3,8 @@ import json
 from flask import Flask, request
 from dotenv import load_dotenv
 from twilio.twiml.messaging_response import MessagingResponse
+import stripe
+from twilio.rest import Client as TwilioClient
 
 from app.ai_service import get_ai_response, extract_flight_details_from_history, extract_traveler_details
 from app.session_manager import load_session, save_session
@@ -15,6 +17,12 @@ load_dotenv()
 
 app = Flask(__name__)
 amadeus_service = AmadeusService()
+
+# Initialize Twilio Client
+twilio_account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
+twilio_auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
+twilio_phone_number = os.environ.get("TWILIO_PHONE_NUMBER")
+twilio_client = TwilioClient(twilio_account_sid, twilio_auth_token)
 
 def _format_flight_offers(flights):
     """Formats flight offers into a string."""
@@ -176,6 +184,50 @@ def webhook():
     resp = MessagingResponse()
     resp.message(response_msg)
     return str(resp)
+
+@app.route("/stripe-webhook", methods=['POST'])
+def stripe_webhook():
+    payload = request.get_data(as_text=True)
+    sig_header = request.headers.get('Stripe-Signature')
+    webhook_secret = os.environ.get('STRIPE_WEBHOOK_SECRET')
+    
+    try:
+        event = stripe.Webhook.construct_event(
+            payload, sig_header, webhook_secret
+        )
+    except ValueError as e:
+        # Invalid payload
+        return 'Invalid payload', 400
+    except stripe.error.SignatureVerificationError as e:
+        # Invalid signature
+        return 'Invalid signature', 400
+
+    # Handle the checkout.session.completed event
+    if event['type'] == 'checkout.session.completed':
+        session = event['data']['object']
+        user_id = session.get('client_reference_id')
+        
+        if user_id:
+            # Load user session
+            state, conversation_history, flight_offers = load_session(user_id)
+            
+            # Update state and save
+            state = "GATHERING_BOOKING_DETAILS"
+            save_session(user_id, state, conversation_history, flight_offers)
+            
+            # Send a message to the user to ask for traveler details
+            response_msg = "Your payment was successful! To finalize the booking, please provide your full name and date of birth (e.g., John Doe YYYY-MM-DD)."
+            
+            try:
+                twilio_client.messages.create(
+                    from_=f"whatsapp:{twilio_phone_number}",
+                    body=response_msg,
+                    to=user_id
+                )
+            except Exception as e:
+                print(f"Error sending Twilio message: {e}")
+
+    return 'OK', 200
 
 if __name__ == "__main__":
     # Temporary test block to bypass pytest issues
