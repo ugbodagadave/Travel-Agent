@@ -1,6 +1,11 @@
 import os
 import json
-from openai import OpenAI
+import openai
+from datetime import datetime
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # System prompt to instruct the AI Agent on its role and how to behave.
 SYSTEM_PROMPT = """
@@ -21,72 +26,77 @@ Example:
 "I have you flying from New York to London on Dec 25th. Is this correct? [INFO_COMPLETE]"
 """
 
+# Configure the OpenAI client for io.net
+client = openai.OpenAI(
+    api_key=os.getenv("IO_API_KEY"),
+    base_url="https://api.intelligence.io.solutions/api/v1/",
+)
+
 def get_ai_response(user_message: str, conversation_history: list) -> (str, list):
-    """
-    Sends the entire conversation history to the IO Intelligence API 
-    and returns the AI's response and the updated history.
-    """
+    if not conversation_history:
+        conversation_history.append({"role": "system", "content": SYSTEM_PROMPT})
+    
+    conversation_history.append({"role": "user", "content": user_message})
+
     try:
-        client = OpenAI(
-            base_url="https://api.intelligence.io.solutions/api/v1",
-            api_key=os.getenv("IO_API_KEY")
+        response = client.chat.completions.create(
+            model="meta-llama/Llama-3.3-70B-Instruct",
+            messages=conversation_history
         )
-
-        # Start with the system prompt, then add the existing history
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-        messages.extend(conversation_history)
-        
-        # Add the new user message
-        messages.append({"role": "user", "content": user_message})
-
-        chat_completion = client.chat.completions.create(
-            messages=messages,
-            model="google/gemma-3-27b-it",
-        )
-        
-        ai_response = chat_completion.choices[0].message.content.strip()
-
-        # Add the AI's response to the history for the next turn
-        updated_history = messages[1:] # Exclude system prompt before saving
-        updated_history.append({"role": "assistant", "content": ai_response})
-
-        return ai_response, updated_history
-
+        ai_response = response.choices[0].message.content
+        conversation_history.append({"role": "assistant", "content": ai_response})
+        return ai_response, conversation_history
     except Exception as e:
-        print(f"Error calling IO Intelligence API: {e}")
-        error_message = "Sorry, I'm having trouble connecting to my brain right now. Please try again later."
-        return error_message, conversation_history
+        print(f"Error communicating with OpenAI: {e}")
+        return "Sorry, I'm having trouble connecting to my brain right now. Please try again in a moment.", conversation_history
+
+def extract_traveler_details(message: str) -> dict:
+    """
+    Uses OpenAI to extract traveler's full name and date of birth from a message.
+    """
+    prompt = f"""
+    Extract the full name and date of birth (YYYY-MM-DD) from the following user message.
+    The user might provide the information in various formats.
+    Return a JSON object with the keys "fullName" and "dateOfBirth".
+
+    User message: "{message}"
+
+    JSON output:
+    """
+    
+    try:
+        response = client.chat.completions.create(
+            model="google/gemma-3-27b-it",
+            messages=[
+                {"role": "system", "content": "You are a data extraction expert."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0,
+            response_format={"type": "json_object"}
+        )
+        extracted_text = response.choices[0].message.content
+        return json.loads(extracted_text)
+    except (json.JSONDecodeError, IndexError, Exception) as e:
+        print(f"Error extracting traveler details: {e}")
+        return {}
 
 def extract_flight_details_from_history(conversation_history: list) -> dict:
-    """
-    Sends the conversation history to the AI with a specific prompt
-    to extract flight details into a structured JSON object.
+    prompt = f"""
+    Based on the following conversation history, extract the flight details into a JSON object.
+    ...
     """
     try:
-        client = OpenAI(
-            base_url="https://api.intelligence.io.solutions/api/v1",
-            api_key=os.getenv("IO_API_KEY")
-        )
-
-        extraction_prompt = (
-            "The following is a conversation with a user who wants to book a flight. "
-            "Please extract the final, confirmed details for the traveler_name, origin, "
-            "destination, departure_date, return_date, and number_of_travelers. "
-            "Respond with ONLY a valid JSON object containing these fields. Do not add any other text."
-        )
-
-        messages = [{"role": "system", "content": extraction_prompt}]
-        messages.extend(conversation_history)
-
-        chat_completion = client.chat.completions.create(
-            messages=messages,
+        response = client.chat.completions.create(
             model="google/gemma-3-27b-it",
-            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": "You are a data extraction expert."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0,
+            response_format={"type": "json_object"}
         )
-        
-        json_response = chat_completion.choices[0].message.content.strip()
-        return json.loads(json_response)
-
-    except Exception as e:
-        print(f"Error during JSON extraction: {e}")
-        return None 
+        extracted_text = response.choices[0].message.content
+        return json.loads(extracted_text)
+    except (json.JSONDecodeError, IndexError, Exception) as e:
+        print(f"Error extracting flight details: {e}")
+        return {} 
