@@ -29,7 +29,30 @@ def test_search_and_book_flight(amadeus_service):
 
     # 3. Book the first flight
     first_flight_offer = flights[0]
-    booking_confirmation = amadeus_service.book_flight(first_flight_offer)
+    
+    traveler = {
+        "id": "1",
+        "dateOfBirth": "1990-01-01",
+        "name": {"firstName": "John", "lastName": "Doe"},
+        "contact": {
+            "emailAddress": "john.doe@example.com",
+            "phones": [{"deviceType": "MOBILE", "countryCallingCode": "1", "number": "5555555555"}]
+        },
+        "documents": [{
+            "documentType": "PASSPORT",
+            "birthPlace": "New York",
+            "issuanceLocation": "New York",
+            "issuanceDate": "2018-08-01",
+            "number": "000000000",
+            "expiryDate": "2028-08-01",
+            "issuanceCountry": "US",
+            "validityCountry": "US",
+            "nationality": "US",
+            "holder": True
+        }]
+    }
+
+    booking_confirmation = amadeus_service.book_flight(first_flight_offer, traveler)
 
     # 4. Assert the booking was successful
     assert booking_confirmation is not None

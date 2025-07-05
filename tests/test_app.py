@@ -29,7 +29,7 @@ def test_state_machine_flow(
 
     # --- Turn 1: GATHERING_INFO state ---
     # Simulate a new session
-    mock_load_session.return_value = ("GATHERING_INFO", [])
+    mock_load_session.return_value = ("GATHERING_INFO", [], [])
     
     # AI asks a clarifying question
     ai_response_1 = "How many people are traveling?"
@@ -40,11 +40,11 @@ def test_state_machine_flow(
     
     assert response1.status_code == 200
     # Check that we saved the new state and history
-    mock_save_session.assert_called_with(user_id, "GATHERING_INFO", history_1)
+    mock_save_session.assert_called_with(user_id, "GATHERING_INFO", history_1, [])
 
     # --- Turn 2: User provides final info, AI confirms ---
     # The session now contains the history from turn 1
-    mock_load_session.return_value = ("GATHERING_INFO", history_1)
+    mock_load_session.return_value = ("GATHERING_INFO", history_1, [])
     
     # AI confirms and signals completion
     ai_response_2 = "Got it. Flying from NYC to LON for 2 people. Is this correct? [INFO_COMPLETE]"
@@ -55,12 +55,12 @@ def test_state_machine_flow(
     
     assert response2.status_code == 200
     # The state should have transitioned to AWAITING_CONFIRMATION
-    mock_save_session.assert_called_with(user_id, "AWAITING_CONFIRMATION", history_2)
+    mock_save_session.assert_called_with(user_id, "AWAITING_CONFIRMATION", history_2, [])
     assert "Is this correct?" in str(response2.data) # Check the user sees the confirmation question
 
     # --- Turn 3: User confirms, triggers flight search ---
     # The session is now awaiting confirmation
-    mock_load_session.return_value = ("AWAITING_CONFIRMATION", history_2)
+    mock_load_session.return_value = ("AWAITING_CONFIRMATION", history_2, [])
     
     # Mock the extracted flight details
     flight_details = {
@@ -71,7 +71,8 @@ def test_state_machine_flow(
     
     # Configure the patched amadeus_service instance directly
     mock_amadeus_service_instance.get_iata_code.side_effect = ['JFK', 'LHR']
-    mock_amadeus_service_instance.search_flights.return_value = [{'price': {'total': '500', 'currency': 'USD'}, 'itineraries': [{'segments': [{'arrival': {'iataCode': 'LHR'}}]}]}]
+    mock_offers = [{'price': {'total': '500', 'currency': 'USD'}, 'itineraries': [{'segments': [{'arrival': {'iataCode': 'LHR'}}]}]}]
+    mock_amadeus_service_instance.search_flights.return_value = mock_offers
     
     response3 = client.post('/webhook', data={'From': user_id, 'Body': 'Yes, that is correct'})
 
@@ -79,5 +80,5 @@ def test_state_machine_flow(
     mock_extract_details.assert_called_with(history_2)
     mock_amadeus_service_instance.search_flights.assert_called_once()
     # Check that the final state is FLIGHT_SELECTION
-    mock_save_session.assert_called_with(user_id, "FLIGHT_SELECTION", history_2)
+    mock_save_session.assert_called_with(user_id, "FLIGHT_SELECTION", history_2, mock_offers)
     assert "I found a few options for you" in str(response3.data) 
