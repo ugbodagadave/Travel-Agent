@@ -15,7 +15,9 @@ def client():
 @patch('app.main.load_session')
 @patch('app.main.get_ai_response')
 @patch('app.main.get_timezone_for_city')
+@patch('app.main.create_checkout_session')
 def test_state_machine_flow(
+    mock_create_checkout,
     mock_get_timezone,
     mock_get_ai_response,
     mock_load_session,
@@ -88,4 +90,23 @@ def test_state_machine_flow(
     # Check that the final state is FLIGHT_SELECTION
     mock_save_session.assert_called_with(user_id, "FLIGHT_SELECTION", history_2, mock_offers)
     assert "I found a few options for you" in str(response3.data)
-    assert "(Note: Times are based on the America/New_York timezone.)" in str(response3.data) 
+    assert "(Note: Times are based on the America/New_York timezone.)" in str(response3.data)
+
+    # --- Turn 4: User selects a flight, triggers payment ---
+    # The session is now in FLIGHT_SELECTION
+    mock_load_session.return_value = ("FLIGHT_SELECTION", history_2, mock_offers)
+    
+    # Mock the checkout session creation
+    mock_checkout_url = "https://checkout.stripe.com/mock_payment_url"
+    mock_create_checkout.return_value = mock_checkout_url
+    
+    # User selects flight "1"
+    response4 = client.post('/webhook', data={'From': user_id, 'Body': '1'})
+
+    assert response4.status_code == 200
+    selected_flight = mock_offers[0]
+    mock_create_checkout.assert_called_once_with(selected_flight, user_id)
+    
+    # Check that state transitions to AWAITING_PAYMENT
+    mock_save_session.assert_called_with(user_id, "AWAITING_PAYMENT", history_2, [selected_flight])
+    assert mock_checkout_url in str(response4.data) 

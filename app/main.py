@@ -8,6 +8,7 @@ from app.ai_service import get_ai_response, extract_flight_details_from_history,
 from app.session_manager import load_session, save_session
 from app.timezone_service import get_timezone_for_city
 from app.amadeus_service import AmadeusService
+from app.payment_service import create_checkout_session
 from app.database import redis_client
 
 load_dotenv()
@@ -101,15 +102,31 @@ def webhook():
                 selection = int(incoming_msg.strip())
                 if 1 <= selection <= len(flight_offers):
                     selected_flight = flight_offers[selection - 1]
-                    response_msg = "To complete the booking, I need your full name (as on passport) and date of birth (YYYY-MM-DD)."
-                    state = "GATHERING_BOOKING_DETAILS"
-                    save_session(user_id, state, conversation_history, [selected_flight])
+                    
+                    # Create a Stripe Checkout session
+                    checkout_url = create_checkout_session(selected_flight, user_id)
+                    
+                    if checkout_url:
+                        response_msg = f"Great! Please complete your payment using this secure link: {checkout_url}"
+                        state = "AWAITING_PAYMENT"
+                        # Save the selected flight offer so we can use it after payment confirmation
+                        save_session(user_id, state, conversation_history, [selected_flight])
+                    else:
+                        response_msg = "I'm sorry, I couldn't create a payment link. Please try again."
+                        # State remains FLIGHT_SELECTION
+                        save_session(user_id, state, conversation_history, flight_offers)
                 else:
                     response_msg = "Invalid selection. Please choose a number from the list."
                     save_session(user_id, state, conversation_history, flight_offers)
             except (ValueError, IndexError):
                 response_msg = "I didn't understand. Please reply with the flight number."
                 save_session(user_id, state, conversation_history, flight_offers)
+
+    elif state == "AWAITING_PAYMENT":
+        # The user should be interacting with Stripe at this point.
+        # We will wait for the Stripe webhook to advance the state.
+        response_msg = "Please use the link I sent you to complete your payment. Once you're done, I'll be notified and we can finalize your booking."
+        save_session(user_id, state, conversation_history, flight_offers)
 
     elif state == "GATHERING_BOOKING_DETAILS":
         selected_flight = flight_offers[0]
