@@ -14,7 +14,9 @@ def client():
 @patch('app.main.save_session')
 @patch('app.main.load_session')
 @patch('app.main.get_ai_response')
+@patch('app.main.get_timezone_for_city')
 def test_state_machine_flow(
+    mock_get_timezone,
     mock_get_ai_response,
     mock_load_session,
     mock_save_session,
@@ -69,6 +71,9 @@ def test_state_machine_flow(
     }
     mock_extract_details.return_value = flight_details
     
+    # Mock the timezone service
+    mock_get_timezone.return_value = "America/New_York"
+    
     # Configure the patched amadeus_service instance directly
     mock_amadeus_service_instance.get_iata_code.side_effect = ['JFK', 'LHR']
     mock_offers = [{'price': {'total': '500', 'currency': 'USD'}, 'itineraries': [{'segments': [{'arrival': {'iataCode': 'LHR'}}]}]}]
@@ -78,7 +83,9 @@ def test_state_machine_flow(
 
     assert response3.status_code == 200
     mock_extract_details.assert_called_with(history_2)
+    mock_get_timezone.assert_called_once_with('NYC') # Check that it was called with the origin city
     mock_amadeus_service_instance.search_flights.assert_called_once()
     # Check that the final state is FLIGHT_SELECTION
     mock_save_session.assert_called_with(user_id, "FLIGHT_SELECTION", history_2, mock_offers)
-    assert "I found a few options for you" in str(response3.data) 
+    assert "I found a few options for you" in str(response3.data)
+    assert "(Note: Times are based on the America/New_York timezone.)" in str(response3.data) 

@@ -54,8 +54,16 @@ def webhook():
             flight_details = extract_flight_details_from_history(conversation_history)
             
             if flight_details:
-                origin_iata = amadeus_service.get_iata_code(flight_details.get('origin'))
+                origin_city = flight_details.get('origin')
+                origin_iata = amadeus_service.get_iata_code(origin_city)
                 destination_iata = amadeus_service.get_iata_code(flight_details.get('destination'))
+                
+                # Get the timezone for the origin city
+                origin_timezone = get_timezone_for_city(origin_city)
+                if origin_timezone:
+                    print(f"Detected timezone for {origin_city}: {origin_timezone}")
+                    # You can store this timezone in the session or use it as needed.
+                    # For now, we'll just add it to the confirmation message.
 
                 if origin_iata and destination_iata:
                     offers = amadeus_service.search_flights(
@@ -65,6 +73,8 @@ def webhook():
                         adults=str(flight_details.get('number_of_travelers', '1'))
                     )
                     response_msg = _format_flight_offers(offers)
+                    if origin_timezone:
+                        response_msg += f"\n(Note: Times are based on the {origin_timezone} timezone.)"
                     state = "FLIGHT_SELECTION"
                     save_session(user_id, state, conversation_history, offers)
                 else:
