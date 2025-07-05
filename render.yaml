@@ -45,6 +45,9 @@ services:
   - type: redis
     name: travel-agent-redis
     plan: free
+    ipAllowList:
+      - source: 0.0.0.0/0
+        description: "Allow all connections"
 
 # PostgreSQL Database
 databases:
