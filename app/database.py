@@ -39,8 +39,4 @@ def init_db():
     Base.metadata.create_all(bind=engine)
 
 # To create the table initially, you might run this from a separate script
-# or integrate it into your app's startup sequence.
-if __name__ == "__main__":
-    print("Initializing database...")
-    init_db()
-    print("Database initialized.") 
+# or integrate it into your app's startup sequence. 

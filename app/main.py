@@ -11,11 +11,15 @@ from app.new_session_manager import load_session, save_session
 from app.timezone_service import get_timezone_for_city
 from app.amadeus_service import AmadeusService
 from app.payment_service import create_checkout_session
-from app.database import redis_client
+from app.database import redis_client, init_db
 
 load_dotenv()
 
 app = Flask(__name__)
+
+# Initialize the database
+init_db()
+
 amadeus_service = AmadeusService()
 
 # Initialize Twilio Client

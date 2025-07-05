@@ -1,0 +1,3 @@
+State: GATHERING_BOOKING_DETAILS
+Flight Offers: Exists
+Traveler Details: {'fullName': 'John Doe', 'dateOfBirth': '1990-01-01'}
