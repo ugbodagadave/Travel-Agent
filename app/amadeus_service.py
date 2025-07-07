@@ -75,5 +75,7 @@ class AmadeusService:
             order_response = self.amadeus.post('/v1/booking/flight-orders', flight_order_body)
             
             return order_response.data
-        except ResponseError:
+        except ResponseError as error:
+            # We can log the full error for debugging
+            # print(f"Amadeus booking failed. Response: {error.response.result}")
             return None

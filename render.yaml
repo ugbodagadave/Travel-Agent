@@ -23,7 +23,7 @@ services:
       # under Environment > Secret Files. Create a file named .env
       # and paste the contents of your local .env file there.
       - key: TWILIO_ACCOUNT_SID
-        sync: false
+        generateValue: true
       - key: TWILIO_AUTH_TOKEN
         sync: false
       - key: TWILIO_PHONE_NUMBER
@@ -35,11 +35,13 @@ services:
       - key: AMADEUS_CLIENT_SECRET
         sync: false
       - key: STRIPE_PUBLISHABLE_KEY
-        sync: false
+        generateValue: true
       - key: STRIPE_SECRET_KEY
-        sync: false
+        generateValue: true
       - key: STRIPE_WEBHOOK_SECRET
-        sync: false
+        generateValue: true
+      - key: TELEGRAM_BOT_TOKEN
+        generateValue: true
 
   # Redis Instance for caching
   - type: redis
