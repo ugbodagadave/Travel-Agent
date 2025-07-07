@@ -36,11 +36,13 @@ Let's walk through the exact sequence of events as a user interacts with the age
 
 This all happens inside the `process_message` function in `app/core_logic.py`.
 
-1.  **Session Loading (`app/new_session_manager.py`):**
+1.  **Session Loading (Redis Cache + Postgres DB) (`app/new_session_manager.py`):**
     *   The first step is to call `load_session(user_id)`.
-    *   This function queries the **PostgreSQL database** directly to find the user's current session, which includes their conversation state and history.
-    *   If the user is not found, it means they are a new user. It returns a fresh session object with the default state: `GATHERING_INFO`.
-    *   **Technology:** PostgreSQL with SQLAlchemy.
+    *   This function first checks the **Redis cache** for the user's session.
+    *   If it's a "cache hit," the session is loaded directly from memory, which is extremely fast.
+    *   If it's a "cache miss," the function queries the **PostgreSQL database** to find the user's current session. After loading, it saves the session back into Redis for future requests.
+    *   If the user is not found in either Redis or Postgres, it means they are a new user. It returns a fresh session object with the default state: `GATHERING_INFO`.
+    *   **Technology:** Redis (caching), PostgreSQL with SQLAlchemy (persistence).
 
 2.  **AI Processing (`app/ai_service.py`):**
     *   The core logic sees the user's state is `GATHERING_INFO`.
@@ -52,7 +54,7 @@ This all happens inside the `process_message` function in `app/core_logic.py`.
 3.  **State Transition & Session Saving:**
     *   The code checks the AI's response for the `[INFO_COMPLETE]` tag.
     *   If the tag is present, it transitions the user's state (e.g., to `AWAITING_CONFIRMATION`).
-    *   Finally, it calls `save_session(...)` to write the updated state and conversation history back to the **PostgreSQL database**.
+    *   Finally, it calls `save_session(...)` to write the updated state and conversation history to both the **Redis cache** (for immediate access) and the **PostgreSQL database** (for long-term durability).
 
 #### Step 3: Flight Search (Amadeus Integration)
 
@@ -109,5 +111,5 @@ This all happens inside the `process_message` function in `app/core_logic.py`.
 *   **Natural Language Understanding:** **IO Intelligence API** acts as the "brain" of the agent.
 *   **Flight Data & Booking:** **Amadeus** provides real-world flight data and booking capabilities.
 *   **Payments:** **Stripe** handles secure payment processing.
-*   **Persistent Storage:** **PostgreSQL** serves as the durable database for all session data. **SQLAlchemy** is the library used to interact with it.
+*   **Session & Persistent Storage:** **Redis** provides a high-speed cache for active conversations, while **PostgreSQL** serves as the durable database for all session data. **SQLAlchemy** is the library used to interact with Postgres.
 *   **Testing:** **Pytest** is used to test every component of the application. 

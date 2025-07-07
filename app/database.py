@@ -24,9 +24,8 @@ def init_db(db_url=None):
 
     # The engine and SessionLocal are created only if they haven't been already.
     # This check prevents re-initialization, which is important for testing.
-    if engine is None:
-        engine = create_engine(db_url)
-        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    engine = create_engine(db_url)
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     
     # Create tables
     Base.metadata.create_all(bind=engine)

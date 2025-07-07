@@ -42,10 +42,8 @@ class AmadeusService:
             response = self.amadeus.shopping.flight_offers_search.get(**kwargs)
             return response.data
         except ResponseError as error:
-            if hasattr(error, 'result'):
-                print(f"Amadeus API Error (search_flights): {error.result}")
-            else:
-                print(f"Amadeus API Error (search_flights): {error}")
+            # Log the full error for debugging, but return None to prevent crash
+            print(f"Amadeus API Error (search_flights): {error.response.result if hasattr(error, 'response') else error}")
             return None
 
     def book_flight(self, flight_offer, traveler):
