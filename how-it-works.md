@@ -4,7 +4,15 @@ This document provides a detailed, step-by-step explanation of how the entire sy
 
 ### High-Level Overview
 
-The application functions as a **stateful conversational agent**. This means it not only understands individual messages but also remembers the entire context of the conversation for each user. It guides the user through a series of states (e.g., `GATHERING_INFO`, `FLIGHT_SELECTION`, `AWAITING_PAYMENT`) to achieve the final goal of booking a flight.
+The application functions as a **stateful, platform-agnostic conversational agent**. At its heart is the `app/core_logic.py` file, which contains a state machine that manages the entire user conversation. This central logic is completely independent of the messaging platform.
+
+Webhook endpoints for each platform (`/webhook` for Twilio/WhatsApp and `/telegram-webhook` for Telegram) act as thin adapters. They are responsible for:
+1.  Receiving incoming messages.
+2.  Extracting the user ID and message content in a standardized format.
+3.  Passing this information to the `process_message` function in `core_logic.py`.
+4.  Taking the response from the core logic and sending it back to the user on the appropriate platform.
+
+This design makes it easy to add new platforms in the future without changing the core business logic.
 
 ---
 
@@ -12,101 +20,94 @@ The application functions as a **stateful conversational agent**. This means it 
 
 Let's walk through the exact sequence of events as a user interacts with the agent.
 
-#### Step 1: The Initial Handshake (User -> Twilio -> App)
+#### Step 1: The Initial Handshake (User -> Platform -> App)
 
-1.  **User Sends Message:** A user sends a WhatsApp message (e.g., "Hi") to your Twilio phone number.
-2.  **Twilio Webhook:** Twilio receives this message and immediately makes an HTTP `POST` request to the public URL of your application, specifically to the `/webhook` endpoint.
+1.  **User Sends Message:** A user sends a message, either to the Twilio WhatsApp number or to the Telegram Bot.
+2.  **Platform Webhook:** The respective platform (Twilio or Telegram) receives the message and immediately makes an HTTP `POST` request to the public URL of your application.
+    *   **WhatsApp:** Hits the `/webhook` endpoint.
+    *   **Telegram:** Hits the `/telegram-webhook` endpoint.
 3.  **Application Entry Point (`app/main.py`):**
-    *   The Flask server receives this `POST` request.
-    *   Inside the `@app.route("/webhook")` function, the application extracts two key pieces of information from the request data:
-        *   `From`: The user's WhatsApp ID (e.g., `whatsapp:+15551234567`). This is the unique identifier for the user.
-        *   `Body`: The content of the message (e.g., "Hi").
-    *   **Technology:** Flask, Twilio API.
+    *   The Flask server receives the `POST` request.
+    *   The relevant webhook function extracts the `user_id` and `message` from the request payload.
+    *   It then calls the central `process_message(user_id, message)` function.
+    *   **Technology:** Flask, Twilio API, Telegram Bot API.
 
-#### Step 2: The AI Conversation & Information Gathering
+#### Step 2: Core Logic, Session, and AI Processing
+
+This all happens inside the `process_message` function in `app/core_logic.py`.
 
 1.  **Session Loading (`app/new_session_manager.py`):**
-    *   The first thing the `/webhook` does is call `load_session(user_id)`.
-    *   This function implements a **cache-aside pattern**:
-        *   **Check Redis (Cache):** It first tries to fetch the session data from Redis, which is extremely fast.
-        *   **Check PostgreSQL (Database):** If the data isn't in Redis (a "cache miss"), it queries the PostgreSQL database for that `user_id`. If found, it stores the result in Redis for future requests before returning it.
-        *   **New User:** If the user is found in neither, it means they are a new user. It returns a fresh session with the default state: `GATHERING_INFO`.
-    *   **Technology:** Redis (for caching), PostgreSQL with SQLAlchemy (for persistent storage).
+    *   The first step is to call `load_session(user_id)`.
+    *   This function queries the **PostgreSQL database** directly to find the user's current session, which includes their conversation state and history.
+    *   If the user is not found, it means they are a new user. It returns a fresh session object with the default state: `GATHERING_INFO`.
+    *   **Technology:** PostgreSQL with SQLAlchemy.
 
 2.  **AI Processing (`app/ai_service.py`):**
-    *   The application sees the user's state is `GATHERING_INFO`.
+    *   The core logic sees the user's state is `GATHERING_INFO`.
     *   It calls `get_ai_response(incoming_msg, conversation_history)`.
-    *   This function sends the user's latest message along with the entire past conversation history to the **IO Intelligence API**.
-    *   The AI has a system prompt that instructs it to act as a travel agent, understand user intent, and extract key "slots" of information (origin, destination, date, number of travelers).
-    *   The AI's response is returned. If it has all the information it needs, the AI includes a special tag: `[INFO_COMPLETE]`. Otherwise, it asks a clarifying question.
+    *   This function sends the user's latest message and the conversation history to the **IO Intelligence API** (using the OpenAI SDK format).
+    *   The AI's system prompt instructs it to act as a travel agent and extract key "slots" of information (origin, destination, date, etc.).
+    *   If the AI has all the information it needs, its response will contain the special tag `[INFO_COMPLETE]`.
 
-3.  **State Transition:**
-    *   Back in `app/main.py`, the code checks the AI's response.
-    *   If `[INFO_COMPLETE]` is present, it transitions the user's state to `AWAITING_CONFIRMATION`.
-    *   The user is sent a summary of the details for them to verify.
-
-4.  **Session Saving (`app/new_session_manager.py`):**
-    *   The `/webhook` function calls `save_session(...)` with the new state and the updated conversation history.
-    *   This function writes the complete session data to **both Redis and PostgreSQL**, ensuring the cache is hot and the data is durably saved.
+3.  **State Transition & Session Saving:**
+    *   The code checks the AI's response for the `[INFO_COMPLETE]` tag.
+    *   If the tag is present, it transitions the user's state (e.g., to `AWAITING_CONFIRMATION`).
+    *   Finally, it calls `save_session(...)` to write the updated state and conversation history back to the **PostgreSQL database**.
 
 #### Step 3: Flight Search (Amadeus Integration)
 
-1.  **User Confirmation:** The user replies "Yes".
-2.  **State Check:** The `/webhook` loads the session and sees the state is `AWAITING_CONFIRMATION`.
-3.  **Service Calls (`app/amadeus_service.py`, `app/timezone_service.py`):**
-    *   The application calls `extract_flight_details_from_history` to get the structured data (origin: 'Paris', destination: 'NYC').
-    *   It determines the local timezone using `get_timezone_for_city` to provide more relevant flight times.
-    *   It calls the **Amadeus API** twice via `amadeus_service.get_iata_code()` to convert city names into official airport IATA codes.
-    *   Finally, it calls `amadeus_service.search_flights()` with these IATA codes. This makes a live API request to Amadeus to find real, available flights.
+1.  **User Confirmation:** The user replies "Yes" to confirm the gathered details.
+2.  **State Check:** The `process_message` function loads the session and sees the state is `AWAITING_CONFIRMATION`.
+3.  **Service Calls (`app/amadeus_service.py`):**
+    *   The application calls `extract_flight_details_from_history` to get structured data from the conversation.
+    *   It calls the **Amadeus API** via `amadeus_service.get_iata_code()` to convert city names into airport IATA codes.
+    *   It then calls `amadeus_service.search_flights()` to perform a live search for available flights.
 
 4.  **Presenting Options:**
     *   The flight offers from Amadeus are formatted into a user-friendly, numbered list.
-    *   This list is sent back to the user as a WhatsApp message.
-    *   The state is changed to `FLIGHT_SELECTION`, and the *full, detailed flight offer objects* are saved in the user's session.
+    *   This list is returned from `process_message` and sent back to the user by the platform-specific webhook.
+    *   The state is changed to `FLIGHT_SELECTION`, and the full flight offer details are saved in the user's session.
 
 #### Step 4: Payment Initiation (Stripe Integration)
 
 1.  **User Selects Flight:** The user replies with a number, e.g., "1".
-2.  **State Check:** The `/webhook` loads the `FLIGHT_SELECTION` state and the list of flight offers.
+2.  **State Check:** The `process_message` function loads the `FLIGHT_SELECTION` state.
 3.  **Checkout Creation (`app/payment_service.py`):**
     *   The application retrieves the full details for the selected flight from the session data.
     *   It calls `create_checkout_session(selected_flight, user_id)`.
-    *   This function calls the **Stripe API** to generate a secure, hosted payment link. It includes the price, currency, and, most importantly, the `user_id` as a `client_reference_id`.
+    *   This function calls the **Stripe API** to generate a secure, hosted payment link. The `user_id` is passed as the `client_reference_id` so Stripe can link the payment back to our user.
     *   The generated Stripe URL is sent to the user.
-    *   The state is updated to `AWAITING_PAYMENT` and saved.
+    *   The state is updated to `AWAITING_PAYMENT`.
 
 #### Step 5: Asynchronous Booking Confirmation (Stripe Webhook)
 
-1.  **User Pays:** The user clicks the link, goes to the Stripe page, and completes the payment.
-2.  **Stripe Notifies App:** After the payment succeeds, Stripe's servers send an asynchronous `POST` request to a *different* endpoint in our app: `/stripe-webhook`.
-3.  **Webhook Handling (`app/main.py`):**
-    *   The `/stripe-webhook` endpoint first performs a crucial security check using your webhook secret to verify the request is legitimate.
-    *   It processes the event and sees it's a `checkout.session.completed`.
-    *   It extracts the `user_id` from the `client_reference_id` we stored in Step 4.
-    *   It loads the user's session, which is still in the `AWAITING_PAYMENT` state.
-    *   It transitions the state to `GATHERING_BOOKING_DETAILS` and saves the session.
-    *   Using the proactive **Twilio Client**, it sends a *new* message to the user, asking for their full name and date of birth.
+1.  **User Pays:** The user clicks the link and completes the payment on Stripe's page.
+2.  **Stripe Notifies App:** After the payment succeeds, Stripe sends an asynchronous `POST` request to `/stripe-webhook`.
+3.  **Platform-Aware Webhook Handling (`app/main.py`):**
+    *   The `/stripe-webhook` endpoint verifies the request came from Stripe.
+    *   It extracts the `user_id` from the Stripe event's `client_reference_id`.
+    *   **Crucially, it checks if the `user_id` belongs to a WhatsApp or Telegram user.**
+    *   Based on the platform, it uses the appropriate client (**Twilio** or **Telegram**) to send a proactive confirmation message to the user, asking for their full name and date of birth.
+    *   It loads the user's session, transitions the state to `GATHERING_BOOKING_DETAILS`, and saves it.
 
 #### Step 6: Finalization
 
 1.  **User Provides Details:** The user replies with their full name and DOB.
-2.  **Final State Check:** The `/webhook` loads the session and sees the state is `GATHERING_BOOKING_DETAILS`.
+2.  **Final State Check:** `process_message` loads the session and sees the state is `GATHERING_BOOKING_DETAILS`.
 3.  **Booking (`app/amadeus_service.py`):**
-    *   `extract_traveler_details` is called to parse the final details.
-    *   A `traveler` object is created in the exact format required by Amadeus.
+    *   `extract_traveler_details` parses the final details.
     *   `amadeus_service.book_flight()` is called. This makes the final, definitive booking request to the Amadeus API.
 4.  **Confirmation:**
-    *   If the booking is successful, Amadeus returns an official booking ID.
-    *   A final confirmation message, including the booking ID, is sent to the user.
-    *   The state is changed to `BOOKING_COMPLETE`, and the conversation is successfully concluded.
+    *   If the booking is successful, Amadeus returns a booking ID.
+    *   A final confirmation message is sent to the user.
+    *   The state is changed to `BOOKING_COMPLETE`.
 
 ### Technology Stack Summary
 
 *   **Backend Framework:** **Flask** provides the web server and routing.
-*   **Messaging:** **Twilio** bridges the gap between WhatsApp and your application.
-*   **Natural Language Understanding:** **IO Intelligence** acts as the "brain," understanding user intent and extracting information.
-*   **Flight Data & Booking:** **Amadeus** provides real-world flight data and the functionality to book tickets.
-*   **Payments:** **Stripe** handles secure payment processing and notifies your application of success via webhooks.
-*   **Session Caching:** **Redis** provides a high-speed, in-memory cache for active conversations.
-*   **Persistent Storage:** **PostgreSQL** serves as the durable, long-term database, ensuring no conversation data is lost. **SQLAlchemy** is the library used to interact with it.
-*   **Testing:** **Pytest** and **unittest.mock** are used to test every component of the application. 
+*   **Messaging Platforms:** **Twilio** for WhatsApp, **Telegram Bot API** for Telegram.
+*   **Natural Language Understanding:** **IO Intelligence API** acts as the "brain" of the agent.
+*   **Flight Data & Booking:** **Amadeus** provides real-world flight data and booking capabilities.
+*   **Payments:** **Stripe** handles secure payment processing.
+*   **Persistent Storage:** **PostgreSQL** serves as the durable database for all session data. **SQLAlchemy** is the library used to interact with it.
+*   **Testing:** **Pytest** is used to test every component of the application. 

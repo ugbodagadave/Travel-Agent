@@ -6,8 +6,8 @@ This document explains the workflow of the AI Travel Agent from a user's perspec
 ### The Conversation Flow
 
 **1. You Send a Message**
-It all starts when you send a WhatsApp message to the agent's number. This could be anything from "Hi" to "I want to book a flight to London."
-*   **Technology Used:** The **Twilio API** receives your WhatsApp message and securely forwards it to our application.
+It all starts when you send a message to the agent on **WhatsApp** or **Telegram**. This could be anything from "Hi" to "I want to book a flight to London."
+*   **Technology Used:** The **Twilio API** (for WhatsApp) and **Telegram Bot API** receive your message and securely forward it to our application.
 
 **2. The AI Understands Your Request**
 Our application takes your message and sends it to an AI "brain." The AI's job is to understand what you want and figure out the key details like your destination, origin, travel dates, and how many people are flying. If it's missing a detail, it will ask a clarifying question.
@@ -26,12 +26,10 @@ After you complete the payment on the Stripe page, their system sends an automat
 *   **Technology Used:** **Stripe Webhooks** send the payment confirmation, and the **Amadeus API** is used again to make the final, official booking.
 
 **6. You Get Your Confirmation**
-The moment the booking is complete, you receive a final WhatsApp message with your booking ID and confirmation details.
+The moment the booking is complete, you receive a final message on WhatsApp or Telegram with your booking ID and confirmation details.
 
 ---
 ### How Does It Remember Me?
 
-The agent can have conversations with thousands of users at once and never gets confused. This is because it saves the context of your specific conversation.
-*   **Technology Used:**
-    *   **Redis** is a super-fast, in-memory database that works like the agent's short-term memory, keeping active conversations snappy and responsive.
-    *   **PostgreSQL** is a powerful, long-term database that securely stores your conversation history so you can even pause and come back later without starting over. 
+The agent can have conversations with many users at once and never gets confused. This is because it saves the context of your specific conversation in a database.
+*   **Technology Used:** A **PostgreSQL** database securely stores your conversation history, so you can even pause and come back later without starting over. 
