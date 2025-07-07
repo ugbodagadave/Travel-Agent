@@ -2,41 +2,34 @@ import os
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, Column, String, JSON
 from sqlalchemy.orm import sessionmaker, declarative_base
-import redis
 
 # Load environment variables from .env file
 load_dotenv()
 
-# --- Global variables for database connection ---
+# --- Database Connection ---
 engine = None
 SessionLocal = None
 Base = declarative_base()
 
 def init_db(db_url=None):
     """
-    Initializes the database by creating an engine and tables.
-    Can be called with a specific db_url for testing purposes.
+    Initializes the database connection and session maker.
+    This function should be called once at application startup.
+    If db_url is provided, it will be used; otherwise, it falls back to the DATABASE_URL environment variable.
     """
     global engine, SessionLocal
     
     if db_url is None:
         db_url = os.getenv("DATABASE_URL")
 
-    if engine is None or str(engine.url) != db_url:
+    # The engine and SessionLocal are created only if they haven't been already.
+    # This check prevents re-initialization, which is important for testing.
+    if engine is None:
         engine = create_engine(db_url)
         SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     
+    # Create tables
     Base.metadata.create_all(bind=engine)
-
-# Initialize Redis client
-try:
-    REDIS_URL = os.getenv("REDIS_URL")
-    redis_client = redis.from_url(REDIS_URL, decode_responses=True)
-    redis_client.ping()
-    print("Successfully connected to Redis.")
-except redis.exceptions.ConnectionError as e:
-    print(f"Could not connect to Redis: {e}")
-    redis_client = None
 
 # Define the Conversation model which corresponds to our database table
 class Conversation(Base):
