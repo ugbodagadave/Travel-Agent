@@ -5,12 +5,9 @@ def save_session(session_id, state, conversation_history, flight_offers=None):
     """
     Saves the session data to Redis for caching and PostgreSQL for persistence.
     """
-    # Ensure conversation history is a list of lists for consistent JSON serialization
-    history_as_lists = [list(item) for item in conversation_history]
-    
     session_data = {
         "state": state,
-        "conversation_history": history_as_lists,
+        "conversation_history": conversation_history,
         "flight_offers": flight_offers or []
     }
     
@@ -41,7 +38,8 @@ def load_session(session_id):
         if cached_session:
             session_data = json.loads(cached_session)
             state = session_data.get("state", "GATHERING_INFO")
-            history = session_data.get("conversation_history", [])
+            history_data = session_data.get("conversation_history", [])
+            history = [dict(item) for item in history_data]
             offers = session_data.get("flight_offers", [])
             return state, history, offers
 
@@ -56,7 +54,8 @@ def load_session(session_id):
                 redis_client.set(session_id, json.dumps(session_data))
             
             state = session_data.get("state", "GATHERING_INFO")
-            history = session_data.get("conversation_history", [])
+            history_data = session_data.get("conversation_history", [])
+            history = [dict(item) for item in history_data]
             offers = session_data.get("flight_offers", [])
             return state, history, offers
     finally:

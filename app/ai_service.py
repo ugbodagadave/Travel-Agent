@@ -47,7 +47,12 @@ def get_ai_response(user_message: str, conversation_history: list) -> (str, list
         conversation_history.append({"role": "assistant", "content": ai_response})
         return ai_response, conversation_history
     except Exception as e:
-        print(f"Error communicating with OpenAI: {e}")
+        # Check if the exception has response data to get more details
+        if hasattr(e, 'response') and e.response and e.response.text:
+            print(f"Error communicating with OpenAI API. Status: {e.response.status_code}, Response: {e.response.text}")
+        else:
+            print(f"An unexpected error occurred with the OpenAI API: {e}")
+            
         return "Sorry, I'm having trouble connecting to my brain right now. Please try again in a moment.", conversation_history
 
 def extract_traveler_details(message: str) -> dict:
