@@ -86,15 +86,30 @@ def extract_traveler_details(message: str) -> dict:
         return {}
 
 def extract_flight_details_from_history(conversation_history: list) -> dict:
+    # Limit the history to the last 10 messages to keep the prompt concise
+    recent_history = conversation_history[-10:]
+    
+    # Convert the list of dicts into a clean string representation
+    history_str = "\n".join([f"{msg['role']}: {msg['content']}" for msg in recent_history if msg['role'] != 'system'])
+
     prompt = f"""
     Based on the following conversation history, extract the flight details into a JSON object.
-    ...
+    The current year is {datetime.now().year}.
+    The JSON object should have these exact keys: "origin", "destination", "departure_date", "return_date", "number_of_travelers".
+    - "departure_date" and "return_date" must be in YYYY-MM-DD format.
+    - "return_date" should be null if it's a one-way trip.
+    - "number_of_travelers" should be an integer.
+
+    Conversation:
+    {history_str}
+
+    JSON output:
     """
     try:
         response = client.chat.completions.create(
             model="google/gemma-3-27b-it",
             messages=[
-                {"role": "system", "content": "You are a data extraction expert."},
+                {"role": "system", "content": "You are a data extraction expert that always returns JSON."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0,
