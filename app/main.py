@@ -6,7 +6,7 @@ import stripe
 from twilio.rest import Client as TwilioClient
 
 from app.amadeus_service import AmadeusService
-from app.database import init_db, SessionLocal, Conversation
+from app.database import init_db, SessionLocal, Conversation, redis_client
 from app.telegram_service import send_message
 from app.core_logic import process_message
 from app.new_session_manager import load_session, save_session
@@ -40,8 +40,8 @@ def reset_database(secret_key):
         num_rows_deleted = db.query(Conversation).delete()
         db.commit()
         # Also flush the redis cache to be safe
-        if app.redis_client:
-            app.redis_client.flushall()
+        if redis_client:
+            redis_client.flushall()
         return f"Database reset successfully. Deleted {num_rows_deleted} conversation(s)."
     except Exception as e:
         db.rollback()
