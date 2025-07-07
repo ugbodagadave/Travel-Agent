@@ -27,28 +27,6 @@ twilio_auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
 TWILIO_WHATSAPP_NUMBER = os.environ.get("TWILIO_WHATSAPP_NUMBER")
 twilio_client = TwilioClient(twilio_account_sid, twilio_auth_token)
 
-# WARNING: TEMPORARY ADMIN ENDPOINT. REMOVE AFTER USE.
-@app.route("/admin/reset-db/<secret_key>")
-def reset_database(secret_key):
-    # Use a simple secret key from env to prevent accidental runs
-    admin_secret = os.environ.get("ADMIN_SECRET_KEY", "default_secret")
-    if secret_key != admin_secret:
-        return "Unauthorized", 401
-    
-    db = SessionLocal()
-    try:
-        num_rows_deleted = db.query(Conversation).delete()
-        db.commit()
-        # Also flush the redis cache to be safe
-        if redis_client:
-            redis_client.flushall()
-        return f"Database reset successfully. Deleted {num_rows_deleted} conversation(s)."
-    except Exception as e:
-        db.rollback()
-        return f"An error occurred: {e}", 500
-    finally:
-        db.close()
-
 @app.route("/webhook", methods=['POST'])
 def webhook():
     incoming_msg = request.values.get('Body', '').lower()
