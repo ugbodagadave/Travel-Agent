@@ -2,6 +2,7 @@ import pytest
 import os
 from app.amadeus_service import AmadeusService
 import json
+from amadeus.client.errors import ResponseError
 
 @pytest.fixture(scope="module")
 def amadeus_service():
@@ -27,9 +28,18 @@ def test_search_and_book_flight(amadeus_service):
     assert flights is not None
     assert len(flights) > 0
 
-    # 3. Book the first flight
-    first_flight_offer = flights[0]
-    
+    # 2. Select the first flight for booking
+    flight_to_book = flights[0]
+
+    # 3. (Optional but good practice) Confirm the price before booking
+    # This can help avoid issues where a flight offer expires between search and book
+    try:
+        price_confirmed_response = amadeus_service.amadeus.shopping.flight_offers.pricing.post(flight_to_book)
+        flight_to_book = price_confirmed_response.data['flightOffers'][0]
+    except ResponseError as e:
+        pytest.skip(f"Amadeus pricing confirmation failed, cannot proceed with booking test. Error: {e}")
+
+    # 4. Book the flight
     traveler = {
         "id": "1",
         "dateOfBirth": "1990-01-01",
@@ -52,10 +62,10 @@ def test_search_and_book_flight(amadeus_service):
         }]
     }
 
-    booking_confirmation = amadeus_service.book_flight(first_flight_offer, traveler)
+    booking_confirmation = amadeus_service.book_flight(flight_to_book, traveler)
 
-    # 4. Assert the booking was successful
+    # 5. Assert the booking was successful
     assert booking_confirmation is not None
-    assert 'id' in booking_confirmation
-    assert 'associatedRecords' in booking_confirmation
+    assert "id" in booking_confirmation
+    assert "associatedRecords" in booking_confirmation
     print(f"Successfully booked flight. Order ID: {booking_confirmation['id']}") 

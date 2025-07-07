@@ -38,8 +38,7 @@ def load_session(session_id):
         if cached_session:
             session_data = json.loads(cached_session)
             state = session_data.get("state", "GATHERING_INFO")
-            history_data = session_data.get("conversation_history", [])
-            history = [dict(item) for item in history_data]
+            history = session_data.get("conversation_history", [])
             offers = session_data.get("flight_offers", [])
             return state, history, offers
 
@@ -54,8 +53,7 @@ def load_session(session_id):
                 redis_client.set(session_id, json.dumps(session_data))
             
             state = session_data.get("state", "GATHERING_INFO")
-            history_data = session_data.get("conversation_history", [])
-            history = [dict(item) for item in history_data]
+            history = session_data.get("conversation_history", [])
             offers = session_data.get("flight_offers", [])
             return state, history, offers
     finally:

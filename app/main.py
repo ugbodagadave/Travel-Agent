@@ -6,7 +6,7 @@ import stripe
 from twilio.rest import Client as TwilioClient
 
 from app.amadeus_service import AmadeusService
-from app.database import init_db, SessionLocal, Conversation, redis_client
+from app.database import init_db
 from app.telegram_service import send_message
 from app.core_logic import process_message
 from app.new_session_manager import load_session, save_session
@@ -33,7 +33,7 @@ def webhook():
     user_id = request.values.get('From', '')
     
     response_msg = process_message(user_id, incoming_msg, amadeus_service)
-    
+
     resp = MessagingResponse()
     resp.message(response_msg)
     return str(resp)

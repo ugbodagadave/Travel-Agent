@@ -1,23 +1,36 @@
 import os
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, Column, String, JSON, Text
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy import create_engine, Column, String, JSON
+from sqlalchemy.orm import sessionmaker, declarative_base
 import redis
 
 # Load environment variables from .env file
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL")
-REDIS_URL = os.getenv("REDIS_URL")
-
-# Create the database engine
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# --- Global variables for database connection ---
+engine = None
+SessionLocal = None
 Base = declarative_base()
+
+def init_db(db_url=None):
+    """
+    Initializes the database by creating an engine and tables.
+    Can be called with a specific db_url for testing purposes.
+    """
+    global engine, SessionLocal
+    
+    if db_url is None:
+        db_url = os.getenv("DATABASE_URL")
+
+    if engine is None or str(engine.url) != db_url:
+        engine = create_engine(db_url)
+        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    
+    Base.metadata.create_all(bind=engine)
 
 # Initialize Redis client
 try:
+    REDIS_URL = os.getenv("REDIS_URL")
     redis_client = redis.from_url(REDIS_URL, decode_responses=True)
     redis_client.ping()
     print("Successfully connected to Redis.")
@@ -30,13 +43,4 @@ class Conversation(Base):
     __tablename__ = "conversations"
 
     user_id = Column(String, primary_key=True, index=True)
-    history = Column(JSON)
-
-def init_db():
-    """
-    Initializes the database by creating tables if they don't exist.
-    """
-    Base.metadata.create_all(bind=engine)
-
-# To create the table initially, you might run this from a separate script
-# or integrate it into your app's startup sequence. 
+    history = Column(JSON) 
