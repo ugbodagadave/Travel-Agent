@@ -2,48 +2,19 @@ import sys
 import os
 import pytest
 import fakeredis
-from app.main import app
-from app.database import init_db, SessionLocal, Base, engine
- 
+from app.main import app as flask_app
+
 # Add the project root to the Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))) 
 
 @pytest.fixture(scope="function")
 def client():
     # Set up: configure app for testing
-    app.config['TESTING'] = True
+    flask_app.config['TESTING'] = True
     
-    # Use an in-memory SQLite database for tests
-    test_db_url = 'sqlite:///:memory:'
-    
-    # Re-initialize the database with the new test configuration
-    init_db(db_url=test_db_url)
-
-    # Create tables before each test
-    Base.metadata.create_all(bind=engine)
-
-    with app.test_client() as client:
-        with app.app_context():
+    with flask_app.test_client() as client:
+        with flask_app.app_context():
             yield client
-
-    # Teardown: Clean up the database after each test
-    Base.metadata.drop_all(bind=engine)
-
-@pytest.fixture
-def db_session(client, monkeypatch):
-    """
-    Provides a transactional database session for a test.
-    It also patches SessionLocal to return this same session,
-    ensuring the app code and test code use the same transaction.
-    """
-    session = SessionLocal()
-    monkeypatch.setattr("app.database.SessionLocal", lambda: session)
-    
-    try:
-        yield session
-    finally:
-        session.rollback() # Rollback to not affect other tests
-        session.close()
 
 @pytest.fixture
 def mock_redis(monkeypatch):

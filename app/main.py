@@ -6,7 +6,6 @@ import stripe
 from twilio.rest import Client as TwilioClient
 
 from app.amadeus_service import AmadeusService
-from app.database import init_db
 from app.telegram_service import send_message
 from app.core_logic import process_message
 from app.new_session_manager import load_session, save_session
@@ -14,9 +13,6 @@ from app.new_session_manager import load_session, save_session
 load_dotenv()
 
 app = Flask(__name__)
-
-# Initialize the database
-init_db()
 
 # Initialize services
 amadeus_service = AmadeusService()
