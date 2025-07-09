@@ -2,6 +2,8 @@ from app.new_session_manager import load_session, save_session
 from app.ai_service import get_ai_response, extract_flight_details_from_history
 from app.amadeus_service import AmadeusService
 from app.payment_service import create_checkout_session
+from app.tasks import search_flights_task
+from app.utils import _format_flight_offers
 
 # This is a simplified formatting function.
 # In a real app, this would be more robust.
@@ -43,33 +45,18 @@ def process_message(user_id, incoming_msg, amadeus_service: AmadeusService):
 
     elif state == "AWAITING_CONFIRMATION":
         if "yes" in incoming_msg or "correct" in incoming_msg:
-            response_messages.append("Okay, let me get the best flight options for you.")
             flight_details = extract_flight_details_from_history(conversation_history)
             
             if flight_details:
-                origin_iata = amadeus_service.get_iata_code(flight_details.get('origin'))
-                destination_iata = amadeus_service.get_iata_code(flight_details.get('destination'))
+                # Immediately respond to the user
+                response_messages.append("Okay, I'm searching for the best flights for you. This might take a moment...")
                 
-                if origin_iata and destination_iata:
-                    offers = amadeus_service.search_flights(
-                        originLocationCode=origin_iata,
-                        destinationLocationCode=destination_iata,
-                        departureDate=flight_details.get('departure_date'),
-                        adults=str(flight_details.get('number_of_travelers', '1'))
-                    )
-                    
-                    if offers:
-                        response_messages.append(_format_flight_offers(offers))
-                        state = "FLIGHT_SELECTION"
-                        save_session(user_id, state, conversation_history, offers)
-                    else:
-                        response_messages.append("Sorry, I couldn't find any flights for the given criteria. Please try a different search.")
-                        state = "GATHERING_INFO"
-                        save_session(user_id, state, conversation_history, [])
-                else:
-                    response_messages.append("I'm sorry, I couldn't find the airport codes.")
-                    state = "GATHERING_INFO"
-                    save_session(user_id, state, conversation_history, [])
+                # Trigger the background task
+                search_flights_task.delay(user_id, flight_details)
+                
+                # Update state to prevent other inputs during search
+                state = "SEARCH_IN_PROGRESS"
+                save_session(user_id, state, conversation_history, [])
             else:
                 response_messages.append("I had trouble understanding the details. Let's try again.")
                 state = "GATHERING_INFO"
@@ -79,6 +66,10 @@ def process_message(user_id, incoming_msg, amadeus_service: AmadeusService):
             response_messages.append(ai_response)
             state = "GATHERING_INFO"
             save_session(user_id, state, updated_history, [])
+
+    elif state == "SEARCH_IN_PROGRESS":
+        response_messages.append("I'm still looking for flights for you. I'll send them over as soon as they're ready.")
+        save_session(user_id, state, conversation_history, flight_offers)
 
     elif state == "FLIGHT_SELECTION":
         if "no" in incoming_msg:

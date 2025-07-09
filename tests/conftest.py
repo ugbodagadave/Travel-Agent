@@ -2,19 +2,29 @@ import sys
 import os
 import pytest
 import fakeredis
+from celery import current_app
 from app.main import app as flask_app
 
 # Add the project root to the Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))) 
 
-@pytest.fixture(scope="function")
-def client():
-    # Set up: configure app for testing
-    flask_app.config['TESTING'] = True
-    
-    with flask_app.test_client() as client:
-        with flask_app.app_context():
-            yield client
+@pytest.fixture(scope="session", autouse=True)
+def celery_session_app(request):
+    """Setup Celery for the test session."""
+    celery_app = current_app
+    celery_app.conf.update(task_always_eager=True)
+    return celery_app
+
+@pytest.fixture
+def app():
+    """Create and configure a new app instance for each test."""
+    with flask_app.app_context():
+        yield flask_app
+
+@pytest.fixture
+def client(app):
+    """A test client for the app."""
+    return app.test_client()
 
 @pytest.fixture
 def mock_redis(monkeypatch):
