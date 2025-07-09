@@ -8,8 +8,24 @@ from app.new_session_manager import save_session
 def mock_amadeus_fixture():
     """Fixture for a mocked AmadeusService."""
     service = MagicMock()
-    service.get_iata_code.return_value = "LHR"
-    service.search_flights.return_value = [{"itineraries": [{"segments": [{"arrival": {"iataCode": "CDG"}}]}], "price": {"total": "250.00", "currency": "EUR"}}]
+    service.get_iata_code.side_effect = lambda city: "LHR" if city == "London" else "CDG"
+    service.get_airport_name.side_effect = lambda code: "London Heathrow" if code == "LHR" else "Charles de Gaulle"
+    service.search_flights.return_value = [
+        {
+            "itineraries": [
+                {
+                    "duration": "PT2H30M",
+                    "segments": [
+                        {
+                            "departure": {"iataCode": "LHR", "at": "2024-10-26T10:00:00"},
+                            "arrival": {"iataCode": "CDG"}
+                        }
+                    ]
+                }
+            ],
+            "price": {"total": "250.00", "currency": "EUR"}
+        }
+    ]
     return service
 
 @pytest.fixture

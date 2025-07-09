@@ -10,6 +10,25 @@ class AmadeusService:
             client_secret=os.getenv("AMADEUS_CLIENT_SECRET"),
             hostname='production' if os.getenv("APP_ENV") == "production" else "test"
         )
+        self.airport_cache = {}
+
+    def get_airport_name(self, iata_code):
+        """
+        Get the full airport name for a given IATA code.
+        Uses a simple in-memory cache to avoid repeated API calls.
+        """
+        if iata_code in self.airport_cache:
+            return self.airport_cache[iata_code]
+        
+        try:
+            # The Amadeus SDK expects the location ID to be prefixed with 'A' for airport
+            response = self.amadeus.reference_data.location(iata_code).get()
+            name = response.data.get('name', iata_code)
+            self.airport_cache[iata_code] = name
+            return name
+        except ResponseError:
+            # If the API fails, just return the code as a fallback
+            return iata_code
 
     def get_iata_code(self, city_name):
         """

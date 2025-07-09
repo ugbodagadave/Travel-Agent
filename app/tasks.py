@@ -70,7 +70,7 @@ def search_flights_task(user_id, flight_details):
 
         
         if offers:
-            response_msg = _format_flight_offers(offers)
+            response_msg = _format_flight_offers(offers, amadeus_service)
             next_state = "FLIGHT_SELECTION"
             print(f"[{user_id}] - INFO: Formatted flight offers successfully.")
         else:
