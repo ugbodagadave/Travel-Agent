@@ -22,7 +22,7 @@ def test_search_and_book_flight(amadeus_service):
     flights = amadeus_service.search_flights(
         originLocationCode='MAD',
         destinationLocationCode='NYC',
-        departureDate='2025-07-11',
+        departureDate='2025-08-15',
         adults=1
     )
     assert flights is not None

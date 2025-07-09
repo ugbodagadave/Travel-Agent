@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # System prompt to instruct the AI Agent on its role and how to behave.
-SYSTEM_PROMPT = """
+SYSTEM_PROMPT_GATHER_INFO = """
 You are a friendly and helpful AI travel agent. Your goal is to fill these slots.
 - If a user specifies a one-way trip or does not provide a return date, do not ask for one.
 - Once you have all the required information, confirm it back to the user.
@@ -26,15 +26,42 @@ Example:
 "I have you flying from New York to London on Dec 25th. Is this correct? [INFO_COMPLETE]"
 """
 
+SYSTEM_PROMPT_CONFIRMATION = """
+You are a helpful AI travel agent. The user has been presented with a summary of their flight details and asked to confirm.
+Your task is to determine if the user's response is a confirmation or a correction.
+
+- If the user's message is a confirmation (e.g., "yes", "correct", "yup", "yeap", "that's right"), you MUST respond with only the special token: `[CONFIRMED]`
+- If the user's message is a correction (e.g., "no, to Rome", "actually 2 people"), you must integrate the correction and restate the updated information, then ask for confirmation again. End this message with the `[INFO_COMPLETE]` token.
+- Do not be conversational unless making a correction.
+
+Example 1:
+User: "Yeap, that's correct"
+Your response: `[CONFIRMED]`
+
+Example 2:
+User: "no, there will be 3 of us"
+Your response: "My mistake! So that's 3 travelers in total. I have you flying from New York to London on Dec 25th. Is this correct? [INFO_COMPLETE]"
+"""
+
 # Configure the OpenAI client for io.net
 client = openai.OpenAI(
     api_key=os.getenv("IO_API_KEY"),
     base_url="https://api.intelligence.io.solutions/api/v1/",
 )
 
-def get_ai_response(user_message: str, conversation_history: list) -> (str, list):
+def get_ai_response(user_message: str, conversation_history: list, state: str) -> (str, list):
     if not conversation_history:
-        conversation_history.append({"role": "system", "content": SYSTEM_PROMPT})
+        # Start of a new conversation
+        system_prompt = SYSTEM_PROMPT_GATHER_INFO
+        conversation_history.append({"role": "system", "content": system_prompt})
+    
+    # Check if the last system message is outdated for the current state
+    last_system_message = next((msg for msg in reversed(conversation_history) if msg['role'] == 'system'), None)
+
+    if state == "AWAITING_CONFIRMATION" and (not last_system_message or last_system_message['content'] != SYSTEM_PROMPT_CONFIRMATION):
+        conversation_history.append({"role": "system", "content": SYSTEM_PROMPT_CONFIRMATION})
+    elif state == "GATHERING_INFO" and (not last_system_message or last_system_message['content'] != SYSTEM_PROMPT_GATHER_INFO):
+        conversation_history.append({"role": "system", "content": SYSTEM_PROMPT_GATHER_INFO})
     
     conversation_history.append({"role": "user", "content": user_message})
 

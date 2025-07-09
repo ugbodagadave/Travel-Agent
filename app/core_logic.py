@@ -33,7 +33,7 @@ def process_message(user_id, incoming_msg, amadeus_service: AmadeusService):
     # NOTE: This is a simplified version of the logic from app/main.py's webhook.
     # It does not yet include payment or final booking logic.
     if state == "GATHERING_INFO":
-        ai_response, updated_history = get_ai_response(incoming_msg, conversation_history)
+        ai_response, updated_history = get_ai_response(incoming_msg, conversation_history, state)
         
         if "[INFO_COMPLETE]" in ai_response:
             response_messages.append(ai_response.replace("[INFO_COMPLETE]", "").strip() + "\n\nIs this information correct?")
@@ -44,8 +44,10 @@ def process_message(user_id, incoming_msg, amadeus_service: AmadeusService):
         save_session(user_id, state, updated_history, flight_offers)
 
     elif state == "AWAITING_CONFIRMATION":
-        if "yes" in incoming_msg or "correct" in incoming_msg:
-            flight_details = extract_flight_details_from_history(conversation_history)
+        ai_response, updated_history = get_ai_response(incoming_msg, conversation_history, state)
+
+        if "[CONFIRMED]" in ai_response:
+            flight_details = extract_flight_details_from_history(updated_history)
             
             if flight_details:
                 # Immediately respond to the user
@@ -56,16 +58,23 @@ def process_message(user_id, incoming_msg, amadeus_service: AmadeusService):
                 
                 # Update state to prevent other inputs during search
                 state = "SEARCH_IN_PROGRESS"
-                save_session(user_id, state, conversation_history, [])
+                save_session(user_id, state, updated_history, [])
             else:
-                response_messages.append("I had trouble understanding the details. Let's try again.")
+                # This should rarely happen, but it's a safe fallback.
+                response_messages.append("I seem to have lost the details. Let's start over.")
                 state = "GATHERING_INFO"
-                save_session(user_id, state, conversation_history, [])
-        else:
-            ai_response, updated_history = get_ai_response(incoming_msg, conversation_history)
-            response_messages.append(ai_response)
-            state = "GATHERING_INFO"
+                save_session(user_id, state, [], [])
+        
+        elif "[INFO_COMPLETE]" in ai_response:
+            # This means the user made a correction and the AI has re-confirmed.
+            response_messages.append(ai_response.replace("[INFO_COMPLETE]", "").strip() + "\n\nIs this information correct?")
+            state = "AWAITING_CONFIRMATION" # Stay in this state
             save_session(user_id, state, updated_history, [])
+
+        else:
+            # Fallback for unexpected AI responses
+            response_messages.append(ai_response)
+            save_session(user_id, state, updated_history, flight_offers)
 
     elif state == "SEARCH_IN_PROGRESS":
         response_messages.append("I'm still looking for flights for you. I'll send them over as soon as they're ready.")
