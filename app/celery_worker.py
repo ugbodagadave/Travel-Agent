@@ -1,5 +1,6 @@
-
 import os
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from celery import Celery
 from dotenv import load_dotenv
 
@@ -20,4 +21,19 @@ celery_app = Celery(
 # Optional Celery configuration
 celery_app.conf.update(
     task_track_started=True,
-) 
+)
+
+# Health check server for Cloud Run
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b'OK')
+
+def start_health_server():
+    port = int(os.getenv('PORT', 8080))
+    server = HTTPServer(('', port), HealthHandler)
+    server.serve_forever()
+
+# Start health server in background thread
+threading.Thread(target=start_health_server, daemon=True).start()
