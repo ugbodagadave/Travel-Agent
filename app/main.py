@@ -28,10 +28,11 @@ def webhook():
     incoming_msg = request.values.get('Body', '').lower()
     user_id = request.values.get('From', '')
     
-    response_msg = process_message(user_id, incoming_msg, amadeus_service)
+    response_messages = process_message(user_id, incoming_msg, amadeus_service)
 
     resp = MessagingResponse()
-    resp.message(response_msg)
+    for msg in response_messages:
+        resp.message(msg)
     return str(resp)
 
 @app.route("/stripe-webhook", methods=['POST'])
@@ -79,9 +80,10 @@ def telegram_webhook():
         text = data["message"]["text"].lower()
         user_id = f"telegram:{chat_id}"
         
-        response_msg = process_message(user_id, text, amadeus_service)
+        response_messages = process_message(user_id, text, amadeus_service)
         
-        send_message(chat_id, response_msg)
+        for msg in response_messages:
+            send_message(chat_id, msg)
 
     return "OK", 200
 

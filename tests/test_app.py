@@ -15,7 +15,7 @@ def test_webhook_uses_process_message(mock_process_message, client):
     Tests that the main Twilio webhook correctly calls the process_message function
     and returns a TwiML response.
     """
-    mock_process_message.return_value = "This is a test response."
+    mock_process_message.return_value = ["This is a test response."]
     
     response = client.post('/webhook', data={
         'From': 'whatsapp:+15551234567',

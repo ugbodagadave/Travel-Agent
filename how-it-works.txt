@@ -31,5 +31,5 @@ The moment the booking is complete, you receive a final message on WhatsApp or T
 ---
 ### How Does It Remember Me?
 
-The agent can have conversations with many users at once and never gets confused. This is because it saves the context of your specific conversation in a database.
-*   **Technology Used:** A **PostgreSQL** database securely stores your conversation history, so you can even pause and come back later without starting over. 
+The agent can have conversations with many users at once and never gets confused. This is because it saves the context of your specific conversation in a fast, in-memory database.
+*   **Technology Used:** A **Redis** database (hosted on Google Cloud) securely stores your conversation history, so you can even pause and come back later without starting over. 

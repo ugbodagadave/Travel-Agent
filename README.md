@@ -10,17 +10,21 @@ This project is an AI-powered travel agent accessible via WhatsApp and Telegram.
 - **Persistent State**: Maintains conversation state for each user in a PostgreSQL database.
 
 ## Core Technologies
-- **Programming Language:** Python 3.x
+- **Programming Language:** Python 3.11
 - **Web Framework:** Flask
 - **Platform Integration:** Twilio (WhatsApp), Telegram Bot API
 - **AI Conversation Layer:** IO Intelligence API
 - **Flight Data API:** Amadeus Self-Service APIs
 - **Payment Processing API:** Stripe
-- **Persistent Storage:** PostgreSQL
+- **Session Storage:** Google Cloud Memorystore (Redis)
+- **Deployment:** Google Cloud Run, Docker, GitHub Actions
 - **Testing**: Pytest
 
 ## Project Structure
 ```
+├── .github/
+│   └── workflows/
+│       └── deploy.yml        # GitHub Actions CI/CD workflow
 ├── app/
 │   ├── main.py               # Main Flask application, routes, and webhook logic
 │   ├── core_logic.py         # Platform-agnostic core conversation logic
@@ -28,8 +32,7 @@ This project is an AI-powered travel agent accessible via WhatsApp and Telegram.
 │   ├── amadeus_service.py    # Handles all Amadeus API interactions
 │   ├── payment_service.py    # Handles all Stripe API interactions
 │   ├── telegram_service.py   # Handles sending messages to Telegram
-│   ├── new_session_manager.py# Manages user session state in the database
-│   └── database.py           # Defines the database schema and connection
+│   └── new_session_manager.py# Manages user session state in Redis
 ├── tests/
 │   ├── integration/
 │   │   ├── test_ai_service_integration.py
@@ -37,7 +40,7 @@ This project is an AI-powered travel agent accessible via WhatsApp and Telegram.
 │   └── test_app.py
 ├── .env                      # Local environment variables (ignored by git)
 ├── requirements.txt          # Python dependencies
-└── render.yaml               # Render deployment configuration
+└── Dockerfile                # Container definition for Cloud Run
 ```
 
 ## Setup and Installation
@@ -84,8 +87,8 @@ This project is an AI-powered travel agent accessible via WhatsApp and Telegram.
     STRIPE_SECRET_KEY=
     STRIPE_WEBHOOK_SECRET=
 
-    # Database URL (for session storage)
-    DATABASE_URL= # e.g., postgresql://user:password@host:port/dbname
+    # Redis URL (for session storage)
+    REDIS_URL= # e.g., redis://<your-memorystore-ip>:<port>
     ```
 
     **How to get the API keys:**
@@ -94,7 +97,7 @@ This project is an AI-powered travel agent accessible via WhatsApp and Telegram.
     - **IO Intelligence**: Create an account on the IO Intelligence platform and generate an API key.
     - **Amadeus**: Register for a Self-Service account on the Amadeus for Developers portal to get your `Client ID` and `Client Secret`.
     - **Stripe**: Sign up for a Stripe account and find your `Publishable Key`, `Secret Key`, and `Webhook Secret` in the Developers dashboard.
-    - **Database**: You can use a free-tier PostgreSQL database from a cloud provider like Render, or run one locally.
+    - **Redis**: This URL is obtained from your Google Cloud Memorystore for Redis instance.
 
 ## Running Tests
 To ensure everything is configured correctly, run the test suite:
@@ -102,7 +105,13 @@ To ensure everything is configured correctly, run the test suite:
 pytest -sv
 ```
 
-## Next Steps
-The next major phases are:
-1.  **Persistent Storage**: Integrate a PostgreSQL database to provide long-term, durable storage for conversation history, complementing the Redis cache.
-2.  **Deployment**: Prepare the application for production and deploy it to a live environment on Render. 
+## Deployment
+This application is configured for continuous deployment to Google Cloud Run using GitHub Actions.
+
+1.  **Trigger**: A push to the `main` branch automatically triggers the deployment workflow defined in `.github/workflows/deploy.yml`.
+2.  **Authentication**: The workflow authenticates to Google Cloud using Workload Identity Federation, which securely grants permissions without needing static key files.
+3.  **Build**: A Docker image is built using the `Dockerfile`.
+4.  **Push**: The new image is pushed to Google Artifact Registry.
+5.  **Deploy**: The image is deployed as a new revision to the Cloud Run service, making the changes live.
+
+All environment variables for the live application are managed securely using Google Secret Manager. 

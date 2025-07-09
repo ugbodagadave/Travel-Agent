@@ -23,7 +23,7 @@ def test_telegram_webhook_uses_process_message(mock_send_message, mock_process_m
     """
     Tests that the Telegram webhook correctly calls process_message and then send_message.
     """
-    mock_process_message.return_value = "Processed response"
+    mock_process_message.return_value = ["Processed response"]
     
     telegram_update = {
         "message": {
