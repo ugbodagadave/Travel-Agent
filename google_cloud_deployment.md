@@ -1,171 +1,66 @@
-# Comprehensive Guide to Migrating and Deploying on Google Cloud via GitHub Actions
+# Google Cloud Deployment Guide
 
-This document provides a complete step-by-step guide to migrating your Python Flask application from Render to Google Cloud. We will use Google Cloud Run for hosting, Memorystore for Redis as a persistent data store, and a GitHub Actions workflow for continuous deployment.
+This guide provides step-by-step instructions for deploying the AI Travel Agent to Google Cloud Run. This application requires **two separate Cloud Run services** to function correctly: a web service and a worker service.
 
-This new plan ensures that any changes pushed to your `main` branch will automatically trigger a build and deployment to Cloud Run, providing a seamless and automated CI/CD pipeline.
-
----
-
-## Phase 1: Google Cloud Project Setup (Manual)
-
-This phase involves setting up your Google Cloud environment. You will need to perform these steps in the Google Cloud Console.
-
-### Step 1: Create a Google Cloud Project
-
-1.  Go to the [Google Cloud Console](https://console.cloud.google.com/).
-2.  Click on the project selector dropdown in the top bar and click **"NEW PROJECT"**.
-3.  Give your project a name (e.g., `ai-travel-agent`) and click **"CREATE"**.
-4.  Make sure billing is enabled for your project.
-
-### Step 2: Enable Necessary APIs
-
-We need to enable all the APIs for the services we'll be using.
-
-1.  In the Cloud Console, search for "APIs & Services" and go to the "Enabled APIs & services" page.
-2.  Click **"+ ENABLE APIS AND SERVICES"**.
-3.  Search for and enable the following APIs one by one:
-    *   **Cloud Run Admin API** (for deploying our service)
-    *   **Artifact Registry API** (to store our Docker containers)
-    *   **Cloud Build API** (for building our container from source)
-    *   **Memorystore for Redis API** (for our Redis instance)
-    *   **Secret Manager API** (for managing our environment variables securely)
-    *   **Serverless VPC Access API** (to connect Cloud Run to Redis)
-    *   **IAM Credentials API** (to allow GitHub Actions to impersonate a service account)
+## Prerequisites
+1.  A Google Cloud Project with the Cloud Run, Cloud Build, Artifact Registry, and Secret Manager APIs enabled.
+2.  `gcloud` CLI installed and authenticated.
+3.  A Docker repository created in Google Artifact Registry.
+4.  All required secrets (API keys, etc.) stored in Google Secret Manager.
 
 ---
 
-## Phase 2: Setting Up Redis and Networking (Manual)
+## Step 1: Build and Push the Docker Image
 
-Now, we'll create our Redis instance and the necessary networking to allow Cloud Run to access it.
+The same Docker image will be used for both services. The `CMD` in the `Dockerfile` will be overridden at deployment time for the worker service.
 
-### Step 1: Create a Memorystore for Redis Instance
-
-1.  In the Google Cloud Console, search for **"Memorystore"** and select **"Redis"**.
-2.  Click **"CREATE INSTANCE"**.
-3.  Fill in the instance details:
-    *   **Instance ID:** Give it a name (e.g., `session-storage`).
-    *   **Region:** Choose a region. **This region must be the same one you use for your Cloud Run service.**
-    *   **Tier:** Select **Basic**.
-    *   **Capacity:** Start with 1 GB.
-    *   **Version:** Choose a recent Redis version.
-4.  Under **"Persistence"**, select **Append Only File (AOF)** for durability.
-5.  Click **"CREATE"**.
-6.  Once created, **note down the `IP address` and `Port`**.
-
-### Step 2: Create a Serverless VPC Access Connector
-
-1.  In the Google Cloud Console, search for **"Serverless VPC Access"**.
-2.  Click **"CREATE CONNECTOR"**.
-3.  Configure the connector:
-    *   **Name:** Give it a name (e.g., `cloud-run-connector`).
-    *   **Region:** **Must be the same region** as your Memorystore instance.
-    *   **Network:** Select the `default` VPC network.
-    *   **Subnet:** Select **"Custom IP range"** and provide an unused `/28` IP range (e.g., `10.8.0.0`).
-4.  Click **"CREATE"**.
-
-### Step 3: Configure Cloud NAT for Internet Access
-
-By default, the VPC network cannot access the public internet. This is required for your app to connect to external APIs like Amadeus and Stripe.
-
-1.  In the Google Cloud Console, search for **"Cloud NAT"**.
-2.  Click **"Create NAT Gateway"**.
-3.  Configure the gateway:
-    *   **Gateway name:** `cloud-run-nat-gateway`
-    *   **VPC network:** `default`
-    *   **Region:** Must match your Cloud Run and VPC Connector region.
-    *   **Cloud Router:** Click "**Create new router**", give it a name (e.g., `cloud-run-router`), and click "**Create**".
-4.  Click the final "**Create**" button.
+1.  **Build the image:**
+    ```bash
+    gcloud builds submit --tag us-central1-docker.pkg.dev/YOUR_PROJECT_ID/YOUR_REPO/app:latest
+    ```
+    (Replace `YOUR_PROJECT_ID` and `YOUR_REPO`)
 
 ---
 
-## Phase 3: Setting Up Secrets and Permissions (Manual)
+## Step 2: Deploy the Web Service
 
-We will use Google Secret Manager for sensitive data and set up a service account for GitHub Actions to use.
+This service will run the Gunicorn web server and handle incoming HTTP requests from users.
 
-### Step 1: Create Secrets in Secret Manager
+1.  **Deploy the service:**
+    ```bash
+    gcloud run deploy ai-travel-agent-web \
+      --image us-central1-docker.pkg.dev/YOUR_PROJECT_ID/YOUR_REPO/app:latest \
+      --platform managed \
+      --region us-central1 \
+      --allow-unauthenticated \
+      --add-vpc-connector YOUR_VPC_CONNECTOR \
+      --vpc-egress private-ranges-only
+    ```
+    (Replace placeholder values).
 
-For each secret in your current `.env` file, create a corresponding secret in Secret Manager.
-
-1.  In the Google Cloud Console, search for **"Secret Manager"**.
-2.  Click **"CREATE SECRET"** for each environment variable.
-3.  Create secrets for:
-    *   `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `IO_API_KEY`, `AMADEUS_CLIENT_ID`, `AMADEUS_CLIENT_SECRET`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `TELEGRAM_BOT_TOKEN`.
-    *   `REDIS_URL`: Use the format `redis://<REDIS_IP_ADDRESS>:<REDIS_PORT>` with the values from your Memorystore instance.
-
-### Step 2: Create a Service Account for GitHub Actions
-
-1.  In the Cloud Console, navigate to **"IAM & Admin" > "Service Accounts"**.
-2.  Click **"CREATE SERVICE ACCOUNT"**.
-3.  Name it `github-actions-deployer`.
-4.  Grant it the following roles:
-    *   **Cloud Run Admin** (`roles/run.admin`): To deploy and manage the Cloud Run service.
-    *   **Artifact Registry Writer** (`roles/artifactregistry.writer`): To push Docker images.
-    *   **Service Account User** (`roles/iam.serviceAccountUser`): To allow Cloud Run to run as another service account.
-    *   **Secret Manager Secret Accessor** (`roles/secretmanager.secretAccessor`): To access secrets during the deployment process.
-5.  Click **"DONE"**.
-
-### Step 3: Configure Workload Identity Federation
-
-This allows GitHub Actions to authenticate as the service account without needing a static key file.
-
-1.  Navigate to **"IAM & Admin" > "Workload Identity Federation"**.
-2.  Click **"CREATE POOL"**, name it `github-pool`, and continue.
-3.  Under "Provider type", select **"OpenID Connect (OIDC)"**.
-4.  For "Provider configuration":
-    *   **Issuer (URL):** `https://token.actions.githubusercontent.com`
-    *   **Audience:** Leave as default.
-5.  Under "Attribute mapping", add the following:
-    *   `google.subject`: `assertion.sub`
-    *   `attribute.actor`: `assertion.actor`
-    *   `attribute.repository`: `assertion.repository`
-6.  Save the provider.
-7.  Now, grant the Service Account access to this pool. Go back to the **Service Accounts** page, select the `github-actions-deployer` account, go to the **"Permissions"** tab, and click **"GRANT ACCESS"**.
-    *   **New principal:** `principalSet://iam.googleapis.com/projects/<YOUR_PROJECT_NUMBER>/locations/global/workloadIdentityPools/github-pool/attribute.repository/<YOUR_GITHUB_USERNAME>/<YOUR_REPO_NAME>`
-    *   **Role:** `Workload Identity User` (`roles/iam.workloadIdentityUser`)
-    *   Replace placeholders with your project number, GitHub username, and repository name.
+2.  **Map Secrets**: In the Cloud Run console, go to your `ai-travel-agent-web` service, edit the revision, and map all the required secrets from Secret Manager to the container as environment variables.
 
 ---
 
-## Phase 4: Application Code Modification (AI Agent Task)
+## Step 3: Deploy the Worker Service
 
-This phase will be handled entirely by me. I will modify the application to remove the PostgreSQL dependency and rely solely on the new Memorystore for Redis instance.
+This service will run the Celery worker to process background tasks. It does not need a public URL.
 
-*   Modify `app/new_session_manager.py` to remove all database logic.
-*   Delete `app/database.py`.
-*   Remove `SQLAlchemy` and `psycopg2-binary` from `requirements.txt`.
-*   Remove database initialization from `app/main.py`.
-*   Delete the `render.yaml` file.
-*   Create a `Dockerfile` for the application.
+1.  **Deploy the service:**
+    ```bash
+    gcloud run deploy ai-travel-agent-worker \
+      --image us-central1-docker.pkg.dev/YOUR_PROJECT_ID/YOUR_REPO/app:latest \
+      --platform managed \
+      --region us-central1 \
+      --no-allow-unauthenticated \
+      --add-vpc-connector YOUR_VPC_CONNECTOR \
+      --vpc-egress private-ranges-only \
+      --set-command "celery" \
+      --set-args "-A,app.celery_worker.celery_app,worker,--loglevel=info"
+    ```
+    - `--no-allow-unauthenticated`: Prevents public access.
+    - `--set-command` and `--set-args`: This is the crucial step. It overrides the Dockerfile's `CMD` and tells the container to start the Celery worker instead of Gunicorn.
 
-*I will run tests after each file modification to ensure the application remains stable.*
+2.  **Map Secrets**: Just like the web service, you MUST map all the same secrets from Secret Manager to this worker service. **This is the most likely cause of the current problem.** The worker cannot function without the API keys.
 
----
-
-## Phase 5: GitHub Actions Deployment (AI Agent Task)
-
-This phase is also handled by me. I will create a GitHub Actions workflow file (`.github/workflows/deploy.yml`). This workflow will:
-1.  Trigger on every push to the `main` branch.
-2.  Authenticate to Google Cloud using Workload Identity Federation.
-3.  Build a Docker image of the application.
-4.  Push the image to Google Artifact Registry.
-5.  Deploy the new image to Google Cloud Run, injecting all the necessary secrets from Secret Manager.
-
----
-
-## Phase 6: Post-Deployment Steps (Manual)
-
-Once the application is successfully deployed for the first time via the GitHub workflow, we will get a public URL for the service. You will need to use this URL to update your webhooks.
-
-### Step 1: Update Webhooks
-
-1.  **Twilio/WhatsApp:** Go to your Twilio console, navigate to your WhatsApp sandbox settings, and update the "WHEN A MESSAGE COMES IN" webhook URL to `YOUR_NEW_URL/webhook`.
-2.  **Telegram:** You will need to use the Telegram Bot API to set the webhook. You can do this by visiting the following URL in your browser (make sure to replace the placeholders):
-    `https://api.telegram.org/bot<YOUR_TELEGRAM_BOT_TOKEN>/setWebhook?url=YOUR_NEW_URL/telegram-webhook`
-
-### Step 2: Test the Application
-
-After updating the webhooks, send a message to your WhatsApp and Telegram bots to confirm that everything is working as expected.
-
----
-
-This comprehensive plan covers all the necessary steps for a successful migration with automated deployments from GitHub. The AI assistant will now create a to-do list to begin the migration tasks. 
+By following these steps, you will have both the web and worker services running correctly, which should permanently resolve the issue of flight searches getting stuck. 

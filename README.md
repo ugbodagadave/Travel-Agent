@@ -105,13 +105,26 @@ To ensure everything is configured correctly, run the test suite:
 pytest -sv
 ```
 
+## Running Locally
+To run the application locally, you'll need to run two separate processes in two different terminals.
+
+**Terminal 1: Run the Web Server**
+```bash
+gunicorn app.main:app
+```
+
+**Terminal 2: Run the Celery Worker**
+```bash
+celery -A app.celery_worker.celery_app worker --loglevel=info
+```
+
 ## Deployment
 This application is configured for continuous deployment to Google Cloud Run using GitHub Actions.
 
-1.  **Trigger**: A push to the `main` branch automatically triggers the deployment workflow defined in `.github/workflows/deploy.yml`.
-2.  **Authentication**: The workflow authenticates to Google Cloud using Workload Identity Federation, which securely grants permissions without needing static key files.
-3.  **Build**: A Docker image is built using the `Dockerfile`.
-4.  **Push**: The new image is pushed to Google Artifact Registry.
-5.  **Deploy**: The image is deployed as a new revision to the Cloud Run service, making the changes live.
+**Important**: This application requires **two** separate Cloud Run services to function correctly:
+1.  A **Web Service** to handle incoming requests from users.
+2.  A **Worker Service** to process background tasks like searching for flights.
+
+For detailed deployment instructions, please see the `google_cloud_deployment.md` file.
 
 All environment variables for the live application are managed securely using Google Secret Manager. 
