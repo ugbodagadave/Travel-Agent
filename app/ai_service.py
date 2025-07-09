@@ -98,7 +98,7 @@ def extract_traveler_details(message: str) -> dict:
     
     try:
         response = client.chat.completions.create(
-            model="google/gemma-3-27b-it",
+            model="meta-llama/Llama-3.3-70B-Instruct",
             messages=[
                 {"role": "system", "content": "You are a data extraction expert."},
                 {"role": "user", "content": prompt}
@@ -134,7 +134,7 @@ def extract_flight_details_from_history(conversation_history: list) -> dict:
     """
     try:
         response = client.chat.completions.create(
-            model="google/gemma-3-27b-it",
+            model="meta-llama/Llama-3.3-70B-Instruct",
             messages=[
                 {"role": "system", "content": "You are a data extraction expert that always returns JSON."},
                 {"role": "user", "content": prompt}
