@@ -57,9 +57,15 @@ def process_message(user_id, incoming_msg, amadeus_service: AmadeusService):
                         departureDate=flight_details.get('departure_date'),
                         adults=str(flight_details.get('number_of_travelers', '1'))
                     )
-                    response_messages.append(_format_flight_offers(offers))
-                    state = "FLIGHT_SELECTION"
-                    save_session(user_id, state, conversation_history, offers)
+                    
+                    if offers:
+                        response_messages.append(_format_flight_offers(offers))
+                        state = "FLIGHT_SELECTION"
+                        save_session(user_id, state, conversation_history, offers)
+                    else:
+                        response_messages.append("Sorry, I couldn't find any flights for the given criteria. Please try a different search.")
+                        state = "GATHERING_INFO"
+                        save_session(user_id, state, conversation_history, [])
                 else:
                     response_messages.append("I'm sorry, I couldn't find the airport codes.")
                     state = "GATHERING_INFO"

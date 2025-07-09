@@ -68,4 +68,34 @@ def test_process_message_awaiting_confirmation_yes(mock_extract_details, mock_sa
     mock_load_session.assert_called_once_with("test_user")
     mock_extract_details.assert_called_once_with(["history"])
     mock_amadeus_service.search_flights.assert_called_once()
-    mock_save_session.assert_called_with("test_user", "FLIGHT_SELECTION", ["history"], mock_amadeus_service.search_flights.return_value) 
+    mock_save_session.assert_called_with("test_user", "FLIGHT_SELECTION", ["history"], mock_amadeus_service.search_flights.return_value)
+
+@patch("app.core_logic.load_session")
+@patch("app.core_logic.save_session")
+@patch("app.core_logic.extract_flight_details_from_history")
+def test_process_message_awaiting_confirmation_no_flights_found(mock_extract_details, mock_save_session, mock_load_session, mock_amadeus_service):
+    """
+    Tests the AWAITING_CONFIRMATION state when no flights are found.
+    """
+    # Configure the mock Amadeus service to return no flights
+    mock_amadeus_service.search_flights.return_value = []
+    
+    mock_load_session.return_value = ("AWAITING_CONFIRMATION", ["history"], [])
+    mock_extract_details.return_value = {
+        'origin': 'London',
+        'destination': 'Mars',
+        'departure_date': '2024-09-15',
+        'number_of_travelers': '1'
+    }
+    
+    response = process_message("test_user", "yes", mock_amadeus_service)
+    
+    # The first message is the acknowledgment
+    assert response[0] == "Okay, let me get the best flight options for you."
+    # The second message should be the "no flights found" message
+    assert "Sorry, I couldn't find any flights" in response[1]
+    
+    mock_load_session.assert_called_once_with("test_user")
+    mock_amadeus_service.search_flights.assert_called_once()
+    # Check that the state is reset to GATHERING_INFO
+    mock_save_session.assert_called_with("test_user", "GATHERING_INFO", ["history"], []) 
