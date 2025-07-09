@@ -31,7 +31,7 @@ class HealthHandler(BaseHTTPRequestHandler):
         self.wfile.write(b'OK')
 
 def start_health_server():
-    port = int(os.getenv('PORT', 8081))
+    port = int(os.getenv('HEALTH_PORT', 8081))
     server = HTTPServer(('', port), HealthHandler)
     server.serve_forever()
 
