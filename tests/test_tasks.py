@@ -2,6 +2,7 @@
 import pytest
 from unittest.mock import patch, MagicMock
 from app.tasks import search_flights_task
+from app.new_session_manager import save_session
 
 @pytest.fixture
 def mock_amadeus_fixture():
@@ -10,6 +11,10 @@ def mock_amadeus_fixture():
     service.get_iata_code.return_value = "LHR"
     service.search_flights.return_value = [{"itineraries": [{"segments": [{"arrival": {"iataCode": "CDG"}}]}], "price": {"total": "250.00", "currency": "EUR"}}]
     return service
+
+@pytest.fixture
+def mock_user_id():
+    return "telegram:12345"
 
 @patch("app.tasks.AmadeusService")
 @patch("app.tasks.load_session")
@@ -84,3 +89,25 @@ def test_search_flights_task_no_flights_whatsapp(mock_send_telegram, mock_twilio
     assert save_args[0] == user_id
     assert save_args[1] == "GATHERING_INFO"
     assert save_args[3] == [] # No offers 
+
+def test_search_flights_task_catastrophic_failure(mocker, mock_user_id):
+    """
+    Test that the task handles a critical failure gracefully (e.g., Amadeus outage),
+    sends an error message, and resets the state.
+    """
+    # Mock dependencies
+    mocker.patch('app.tasks.load_session', return_value=("SEARCH_IN_PROGRESS", [], []))
+    mocker.patch('app.tasks.AmadeusService.get_iata_code', side_effect=Exception("Major API Outage"))
+    mock_send_message = mocker.patch('app.tasks.send_message')
+    mock_save_session = mocker.patch('app.tasks.save_session')
+
+    flight_details = {'origin': 'London', 'destination': 'Paris', 'departure_date': '2025-12-01'}
+
+    # Run the task
+    search_flights_task(mock_user_id, flight_details)
+
+    # Assert that a user-friendly error message was sent
+    mock_send_message.assert_called_with('12345', "I'm sorry, but I encountered an unexpected error while searching for flights. Please try again in a moment.")
+    
+    # Assert that the session was reset to GATHERING_INFO
+    mock_save_session.assert_called_with(mock_user_id, "GATHERING_INFO", [], []) 
