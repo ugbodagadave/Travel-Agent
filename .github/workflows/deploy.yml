@@ -31,15 +31,15 @@ jobs:
       - name: Authorize Docker push
         run: gcloud auth configure-docker us-central1-docker.pkg.dev
 
-      - name: Build and Push Container
-        run: |-
-          docker build -t us-central1-docker.pkg.dev/travel-agent-465305/travel-agent/app:latest .
-          docker push us-central1-docker.pkg.dev/travel-agent-465305/travel-agent/app:latest
+      - name: Build and Push Web Container
+        run: |
+          docker build -t us-central1-docker.pkg.dev/travel-agent-465305/travel-agent/app-web:latest -f Dockerfile.web .
+          docker push us-central1-docker.pkg.dev/travel-agent-465305/travel-agent/app-web:latest
 
-      - name: Deploy to Cloud Run (no traffic)
-        run: |-
-          gcloud run deploy ai-travel-agent \
-            --image us-central1-docker.pkg.dev/travel-agent-465305/travel-agent/app:latest \
+      - name: Deploy Web to Cloud Run (no traffic)
+        run: |
+          gcloud run deploy ai-travel-agent-web \
+            --image us-central1-docker.pkg.dev/travel-agent-465305/travel-agent/app-web:latest \
             --region us-central1 \
             --platform managed \
             --allow-unauthenticated \
@@ -47,8 +47,8 @@ jobs:
             --no-traffic \
             --set-secrets=REDIS_URL=REDIS_URL:latest,TWILIO_ACCOUNT_SID=TWILIO_ACCOUNT_SID:latest,TWILIO_AUTH_TOKEN=TWILIO_AUTH_TOKEN:latest,IO_API_KEY=IO_API_KEY:latest,AMADEUS_CLIENT_ID=AMADEUS_CLIENT_ID:latest,AMADEUS_CLIENT_SECRET=AMADEUS_CLIENT_SECRET:latest,STRIPE_PUBLISHABLE_KEY=STRIPE_PUBLISHABLE_KEY:latest,STRIPE_SECRET_KEY=STRIPE_SECRET_KEY:latest,STRIPE_WEBHOOK_SECRET=STRIPE_WEBHOOK_SECRET:latest,TELEGRAM_BOT_TOKEN=TELEGRAM_BOT_TOKEN:latest
 
-      - name: Route traffic to new revision
-        run: |-
-          gcloud run services update-traffic ai-travel-agent \
+      - name: Route traffic to new Web revision
+        run: |
+          gcloud run services update-traffic ai-travel-agent-web \
             --to-latest \
             --region us-central1
