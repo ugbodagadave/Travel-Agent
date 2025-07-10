@@ -4,6 +4,9 @@ services:
     type: redis
     plan: free
     maxmemoryPolicy: noeviction
+    ipAllowList: [] # Allow access from all services in the account
+    # The empty array means that all your services in the same Render account can connect.
+    # For more security, you could restrict this to specific source IPs.
 
   # The public-facing Flask web service
   - name: ai-travel-agent-web
