@@ -38,9 +38,10 @@ def _format_flight_offers(flights, amadeus_service):
         num_stops = len(itinerary['segments']) - 1
         stopover_text = "Direct" if num_stops == 0 else f"{num_stops} stop(s)"
 
+        # Bold the main line and add an extra newline for spacing
         response_lines.append(
-            f"{i}. {origin_name} ({origin_code}) to {destination_name} ({destination_code}) for {price} {flight['price']['currency']}.\n"
-            f"   Departs at: {departure_time}, Duration: {duration}, {stopover_text}"
+            f"*{i}. {origin_name} ({origin_code}) to {destination_name} ({destination_code}) for {price} {flight['price']['currency']}.*\n"
+            f"   Departs at: {departure_time}, Duration: {duration}, {stopover_text}\n"
         )
 
     response_lines.append("\nReply with the number of the flight you'd like to book, or say 'no' to start over.")

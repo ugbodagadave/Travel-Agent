@@ -26,10 +26,16 @@ def test_format_flight_offers_direct_flight():
         }
     ]
     formatted_string = _format_flight_offers(mock_flights, mock_amadeus_service)
-    assert "1. London Heathrow (LHR) to New York JFK (JFK) for 500.00 USD." in formatted_string
-    assert "Departs at: 09:00 AM" in formatted_string
-    assert "Duration: 5h 0m" in formatted_string
-    assert "Direct" in formatted_string
+    
+    # Assert the exact format including bolding and spacing
+    expected_main_line = "*1. London Heathrow (LHR) to New York JFK (JFK) for 500.00 USD.*"
+    expected_details_line = "   Departs at: 09:00 AM, Duration: 5h 0m, Direct"
+    
+    assert expected_main_line in formatted_string
+    assert expected_details_line in formatted_string
+    # Check for the newline that separates entries
+    assert f"{expected_details_line}\n\n" in formatted_string
+
 
 def test_format_flight_offers_with_stopover():
     """
@@ -65,10 +71,14 @@ def test_format_flight_offers_with_stopover():
         }
     ]
     formatted_string = _format_flight_offers(mock_flights, mock_amadeus_service)
-    assert "1. London Heathrow (LHR) to New York JFK (JFK) for 750.00 EUR." in formatted_string
-    assert "Departs at: 11:00 AM" in formatted_string
-    assert "Duration: 12h 15m" in formatted_string
-    assert "1 stop(s)" in formatted_string
+    
+    expected_main_line = "*1. London Heathrow (LHR) to New York JFK (JFK) for 750.00 EUR.*"
+    expected_details_line = "   Departs at: 11:00 AM, Duration: 12h 15m, 1 stop(s)"
+
+    assert expected_main_line in formatted_string
+    assert expected_details_line in formatted_string
+    assert f"{expected_details_line}\n\n" in formatted_string
+
 
 def test_format_flight_offers_no_flights():
     # Mock AmadeusService is needed for the call signature
@@ -101,7 +111,10 @@ def test_format_flight_offers_with_full_details():
         }
     ]
     formatted_string = _format_flight_offers(mock_flights, mock_amadeus_service)
-    assert "1. Charles de Gaulle (CDG) to New York JFK (JFK) for 1200.50 USD." in formatted_string
-    assert "Departs at: 10:30 AM" in formatted_string
-    assert "Duration: 8h 30m" in formatted_string
-    assert "Direct" in formatted_string 
+
+    expected_main_line = "*1. Charles de Gaulle (CDG) to New York JFK (JFK) for 1200.50 USD.*"
+    expected_details_line = "   Departs at: 10:30 AM, Duration: 8h 30m, Direct"
+
+    assert expected_main_line in formatted_string
+    assert expected_details_line in formatted_string
+    assert f"{expected_details_line}\n\n" in formatted_string 

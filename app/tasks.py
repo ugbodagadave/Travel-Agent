@@ -23,7 +23,6 @@ def search_flights_task(user_id, flight_details):
     Function to search for flights asynchronously, send a proactive message,
     and update the session state. Now runs in a background thread.
     """
-    print(f"[{user_id}] - INFO: Starting search_flights_task.")
     
     # --- Check for essential environment variables ---
     missing_vars = [var for var in ["REDIS_URL", "AMADEUS_CLIENT_ID", "AMADEUS_CLIENT_SECRET", "TELEGRAM_BOT_TOKEN", "TWILIO_ACCOUNT_SID"] if not os.getenv(var)]
