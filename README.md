@@ -34,7 +34,8 @@ This project is an AI-powered travel agent accessible via WhatsApp and Telegram.
 │   ├── payment_service.py    # Handles all Stripe API interactions
 │   ├── telegram_service.py   # Handles sending messages to Telegram
 │   ├── new_session_manager.py# Manages user session state in Redis
-│   └── celery_worker.py      # Celery application definition
+│   ├── celery_worker.py      # Celery application definition
+│   └── tasks.py              # Defines asynchronous background tasks for Celery
 ├── tests/
 │   ├── integration/
 │   │   ├── test_ai_service_integration.py
