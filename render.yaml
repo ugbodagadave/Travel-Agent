@@ -23,7 +23,7 @@ services:
           name: redis
           property: connectionString
       - key: PYTHON_VERSION
-        value: 3.11
+        value: 3.11.9
 
   # The private Celery background worker
   - name: ai-travel-agent-worker
@@ -39,4 +39,4 @@ services:
           name: redis
           property: connectionString
       - key: PYTHON_VERSION
-        value: 3.11 
+        value: 3.11.9 
