@@ -23,20 +23,4 @@ services:
           name: redis
           property: connectionString
       - key: PYTHON_VERSION
-        value: 3.11.9
-
-  # The private Celery background worker
-  - name: ai-travel-agent-worker
-    type: worker
-    plan: free
-    env: python
-    buildCommand: 'pip install -r requirements.txt'
-    startCommand: 'celery -A app.celery_worker.celery_app worker --loglevel=info'
-    envVars:
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: redis
-          property: connectionString
-      - key: PYTHON_VERSION
         value: 3.11.9 

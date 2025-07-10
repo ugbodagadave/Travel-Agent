@@ -165,4 +165,41 @@ Send a message to your agent on both Telegram and WhatsApp. Go through the entir
 - Confirm the flight search.
 - **Verify that you receive the flight results.** This confirms the web service, Redis, and worker service are all communicating correctly.
 
-Congratulations! Your application is now running on Render. 
+Congratulations! Your application is now running on Render.
+
+---
+
+## Phase 4: Consolidating to a Single Service (Render Free Tier)
+
+**Problem:** Render's free tier for individual accounts does not include the "Background Worker" service type, which is required to run a separate Celery process.
+
+**Solution:** We will refactor the application to run flight searches in a background thread within the main `ai-travel-agent-web` service. This preserves a responsive user experience while working within the free tier's limitations. The Redis instance will still be used for session management.
+
+### 4.1: Code Refactoring Plan
+
+1.  **Implement Threading for Background Tasks:**
+    *   In `app/core_logic.py`, the `search_flights_task.delay(...)` call will be replaced.
+    *   The new implementation will use Python's built-in `threading` module to start `search_flights_task` in a new, non-blocking thread. This will look something like:
+        ```python
+        import threading
+        from app.tasks import search_flights_task
+
+        # ... inside the process_message function ...
+        task_thread = threading.Thread(target=search_flights_task, args=(user_id, flight_details))
+        task_thread.start()
+        ```
+
+2.  **Simplify Celery Components:**
+    *   The `@celery_app.task` decorator will be removed from the function in `app/tasks.py`. It will become a standard Python function.
+    *   The `app/celery_worker.py` and `app/health.py` files will be deleted as they are no longer needed.
+    *   The `celery` package will be removed from `requirements.txt`.
+
+### 4.2: Update `render.yaml`
+
+The `render.yaml` file will be modified to remove the `ai-travel-agent-worker` service definition entirely. The file will only define two services: `redis` and `ai-travel-agent-web`. The `startCommand` for the web service will remain `gunicorn app.main:app`.
+
+### 4.3: Testing the New Architecture
+
+1.  **Update Unit Tests:** Existing tests that mock Celery's `.delay()` method must be updated. The new tests will assert that `threading.Thread` is created and started with the correct function and arguments.
+2.  **Local End-to-End Test:** The application will be run locally to confirm the entire flow works as expected. A flight search must be triggered to verify that results are sent back proactively without blocking the main application.
+3.  **Push and Deploy:** Once all tests pass, the changes will be pushed to GitHub, and Render will automatically deploy the new, single-service version of the application. 

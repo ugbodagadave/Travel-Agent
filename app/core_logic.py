@@ -1,3 +1,4 @@
+import threading
 from app.new_session_manager import load_session, save_session
 from app.ai_service import get_ai_response, extract_flight_details_from_history
 from app.amadeus_service import AmadeusService
@@ -53,8 +54,9 @@ def process_message(user_id, incoming_msg, amadeus_service: AmadeusService):
                 # Immediately respond to the user
                 response_messages.append("Okay, I'm searching for the best flights for you. This might take a moment...")
                 
-                # Trigger the background task
-                search_flights_task.delay(user_id, flight_details)
+                # Trigger the background task in a separate thread
+                task_thread = threading.Thread(target=search_flights_task, args=(user_id, flight_details))
+                task_thread.start()
                 
                 # Update state to prevent other inputs during search
                 state = "SEARCH_IN_PROGRESS"

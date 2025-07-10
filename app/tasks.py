@@ -1,7 +1,6 @@
 
 import os
 from twilio.rest import Client as TwilioClient
-from app.celery_worker import celery_app
 from app.amadeus_service import AmadeusService
 from app.new_session_manager import load_session, save_session
 from app.utils import _format_flight_offers
@@ -19,11 +18,10 @@ def _search_flights_with_retry(amadeus_service, **kwargs):
     """Wrapper to search flights with retry logic."""
     return amadeus_service.search_flights(**kwargs)
 
-@celery_app.task
 def search_flights_task(user_id, flight_details):
     """
-    Celery task to search for flights asynchronously, send a proactive message,
-    and update the session state.
+    Function to search for flights asynchronously, send a proactive message,
+    and update the session state. Now runs in a background thread.
     """
     print(f"[{user_id}] - INFO: Starting search_flights_task.")
     

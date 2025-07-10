@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, ANY
 from app.core_logic import process_message
 
 @pytest.fixture
@@ -45,12 +45,12 @@ def test_process_message_info_complete(mock_get_ai, mock_save_session, mock_load
     # Check that save_session was called with the new state
     mock_save_session.assert_called_with("test_user", "AWAITING_CONFIRMATION", ["history"], [])
 
-@patch("app.core_logic.search_flights_task.delay")
+@patch("threading.Thread")
 @patch("app.core_logic.load_session")
 @patch("app.core_logic.save_session")
 @patch("app.core_logic.extract_flight_details_from_history")
 @patch("app.core_logic.get_ai_response")
-def test_process_message_awaiting_confirmation_triggers_task_on_confirm(mock_get_ai, mock_extract_details, mock_save_session, mock_load_session, mock_search_task):
+def test_process_message_awaiting_confirmation_triggers_task_on_confirm(mock_get_ai, mock_extract_details, mock_save_session, mock_load_session, mock_thread):
     """
     Tests that the AWAITING_CONFIRMATION state triggers the task when the AI confirms.
     """
@@ -60,6 +60,10 @@ def test_process_message_awaiting_confirmation_triggers_task_on_confirm(mock_get
     flight_details = {'origin': 'London', 'destination': 'Paris'}
     mock_extract_details.return_value = flight_details
     
+    # Mock the thread object
+    mock_thread_instance = MagicMock()
+    mock_thread.return_value = mock_thread_instance
+
     response = process_message(user_id, "yeap", MagicMock())
     
     mock_get_ai.assert_called_once_with("yeap", ["history"], "AWAITING_CONFIRMATION")
@@ -67,17 +71,19 @@ def test_process_message_awaiting_confirmation_triggers_task_on_confirm(mock_get
     # Check for immediate user feedback
     assert response[0] == "Okay, I'm searching for the best flights for you. This might take a moment..."
     
-    # Check that the task was called
-    mock_search_task.assert_called_once_with(user_id, flight_details)
+    # Check that a thread was created with the correct target and arguments
+    mock_thread.assert_called_once_with(target=ANY, args=(user_id, flight_details))
+    
+    # Check that the thread was started
+    mock_thread_instance.start.assert_called_once()
     
     # Check that the state was updated to SEARCH_IN_PROGRESS
     mock_save_session.assert_called_with(user_id, "SEARCH_IN_PROGRESS", ["history", {"role": "assistant", "content": "[CONFIRMED]"}], [])
 
-@patch("app.core_logic.search_flights_task.delay")
 @patch("app.core_logic.load_session")
 @patch("app.core_logic.save_session")
 @patch("app.core_logic.get_ai_response")
-def test_process_message_awaiting_confirmation_handles_correction(mock_get_ai, mock_save_session, mock_load_session, mock_search_task):
+def test_process_message_awaiting_confirmation_handles_correction(mock_get_ai, mock_save_session, mock_load_session):
     """
     Tests that the agent handles a user correction during confirmation.
     """
@@ -95,7 +101,7 @@ def test_process_message_awaiting_confirmation_handles_correction(mock_get_ai, m
     mock_get_ai.assert_called_once_with("no, 2 travelers", ["history"], "AWAITING_CONFIRMATION")
     
     # Check that NO search task was triggered
-    mock_search_task.assert_not_called()
+    # (There's no task to check anymore, the logic simply doesn't start a thread)
     
     # Check that the user gets the corrected confirmation prompt
     assert "Is this correct now?" in response[0]
