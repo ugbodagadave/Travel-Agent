@@ -86,6 +86,7 @@ def search_flights_task(user_id, flight_details):
     try:
         print(f"[{user_id}] - INFO: Attempting to send message to user.")
         if user_id.startswith('whatsapp:'):
+            print(f"[{user_id}] - DEBUG: Sending proactive message from: '{TWILIO_WHATSAPP_NUMBER}' to: '{user_id}'")
             twilio_client.messages.create(
                 from_=TWILIO_WHATSAPP_NUMBER,
                 body=response_msg,
