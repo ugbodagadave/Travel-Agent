@@ -20,6 +20,14 @@ twilio_auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
 TWILIO_WHATSAPP_NUMBER = os.environ.get("TWILIO_WHATSAPP_NUMBER")
 twilio_client = TwilioClient(twilio_account_sid, twilio_auth_token)
 
+@app.route("/health")
+def health():
+    return {'status': 'healthy'}, 200
+
+@app.route("/")
+def root():
+    return {'message': 'Travel Agent API is running'}, 200
+
 @app.route("/webhook", methods=['POST'])
 def webhook():
     incoming_msg = request.values.get('Body', '').lower()
