@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import MagicMock, patch
-from app.amadeus_service import AmadeusService, ResponseError
+from app.amadeus_service import AmadeusService, ResponseError, Location
 
 @pytest.fixture
 def mock_amadeus_client():
@@ -34,6 +34,46 @@ def test_get_iata_code_not_found(mock_amadeus_client):
     iata_code = service.get_iata_code('Nowhere')
     
     assert iata_code is None
+
+def test_get_airport_name_success_and_cached(mock_amadeus_client):
+    """ Test successful airport name lookup and that the result is cached. """
+    mock_response = MagicMock()
+    mock_response.data = [{'name': 'HEATHROW'}]
+    mock_amadeus_client.reference_data.locations.get.return_value = mock_response
+
+    service = AmadeusService()
+    
+    # First call - should trigger API call
+    name = service.get_airport_name('LHR')
+    assert name == 'HEATHROW'
+    mock_amadeus_client.reference_data.locations.get.assert_called_once_with(
+        keyword='LHR',
+        subType=Location.AIRPORT
+    )
+    
+    # Second call - should use cache, no new API call
+    name2 = service.get_airport_name('LHR')
+    assert name2 == 'HEATHROW'
+    mock_amadeus_client.reference_data.locations.get.assert_called_once() # Still called only once
+
+def test_get_airport_name_api_failure_and_fallback(mock_amadeus_client):
+    """ Test that the function falls back to the IATA code on API error and caches the failure. """
+    mock_amadeus_client.reference_data.locations.get.side_effect = ResponseError(MagicMock())
+
+    service = AmadeusService()
+
+    # First call - should fail and return the code
+    name = service.get_airport_name('BADCODE')
+    assert name == 'BADCODE'
+    mock_amadeus_client.reference_data.locations.get.assert_called_once_with(
+        keyword='BADCODE',
+        subType=Location.AIRPORT
+    )
+
+    # Second call - should use cache and not call the API again
+    name2 = service.get_airport_name('BADCODE')
+    assert name2 == 'BADCODE'
+    mock_amadeus_client.reference_data.locations.get.assert_called_once() # Still called only once
 
 def test_search_flights_success(mock_amadeus_client):
     """ Test successful flight search. """

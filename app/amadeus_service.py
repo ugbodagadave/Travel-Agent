@@ -21,13 +21,24 @@ class AmadeusService:
             return self.airport_cache[iata_code]
         
         try:
-            # The Amadeus SDK expects the location ID to be prefixed with 'A' for airport
-            response = self.amadeus.reference_data.location(iata_code).get()
-            name = response.data.get('name', iata_code)
-            self.airport_cache[iata_code] = name
-            return name
+            # Use the locations API to search for the airport by its IATA code.
+            response = self.amadeus.reference_data.locations.get(
+                keyword=iata_code,
+                subType=Location.AIRPORT
+            )
+            
+            # If we get data back, extract the name, cache it, and return it.
+            if response.data:
+                name = response.data[0].get('name', iata_code)
+                self.airport_cache[iata_code] = name
+                return name
+            else:
+                # If no data, cache the failure (using the code itself) and return.
+                self.airport_cache[iata_code] = iata_code
+                return iata_code
         except ResponseError:
-            # If the API fails, just return the code as a fallback
+            # If the API fails, cache the failure and return the code as a fallback.
+            self.airport_cache[iata_code] = iata_code
             return iata_code
 
     def get_iata_code(self, city_name):
