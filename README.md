@@ -1,4 +1,4 @@
-# AI Travel Agent
+# AI Travel Agent [FLAI]
 
 This project is an AI-powered travel agent accessible via WhatsApp and Telegram. It uses natural language processing to understand user requests, search for real-time flight information, and book flights. It is deployed as a single, multi-threaded web service on Render.
 
