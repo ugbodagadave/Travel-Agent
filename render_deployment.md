@@ -125,8 +125,12 @@ Your services will not start correctly until you provide them with the necessary
     - `STRIPE_PUBLISHABLE_KEY`
     - `STRIPE_SECRET_KEY`
     - `STRIPE_WEBHOOK_SECRET`
+    - `BASE_URL`
 
 **IMPORTANT:** Both the web and worker services need these variables to function correctly.
+
+- **`BASE_URL`**: This should be the full public URL of your web service (e.g., `https://ai-travel-agent-web-xxxx.onrender.com`). It is used to create correct redirect links for Stripe.
+- **`STRIPE_WEBHOOK_SECRET`**: This value must be copied **exactly** from your Stripe webhook's signing secret. If this is incorrect, your application will silently fail to receive payment confirmations, and no PDFs will be sent.
 
 ### 2.3: Production Note on File Storage
 

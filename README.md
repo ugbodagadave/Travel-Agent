@@ -102,6 +102,10 @@ For a detailed, technical deep-dive (including production considerations), see `
     # Redis URL (for local development)
     # On Render, this is set automatically. For local, you might use:
     REDIS_URL=redis://localhost:6379
+
+    # The base URL of the deployed application (e.g., https://your-app.onrender.com)
+    # This is required for creating correct Stripe redirect URLs.
+    BASE_URL=http://127.0.0.1:5000
     ```
 
     **How to get the API keys:**
