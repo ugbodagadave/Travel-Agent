@@ -57,9 +57,37 @@ This is the most critical part of the architecture.
     *   It then connects directly to the Telegram API and sends the results as a **new, proactive message** to the user.
 4.  **Final State Update:** The thread updates the user's state in Redis to `FLIGHT_SELECTION` and saves the flight offers to their session.
 
-#### Step 5: Payment and Final Booking
+#### Step 5: Payment Confirmation and Itinerary Delivery
 
-The rest of the flow follows a similar pattern. The web service handles the direct user interactions (like choosing a flight), and after payment is confirmed via a Stripe webhook, it triggers the final booking logic. Any long-running notifications could also be handled in background threads.
+The final part of the user journey is handled by the Stripe webhook.
+
+1.  **Payment Success:** The user successfully completes the payment on the Stripe Checkout page.
+2.  **Stripe Webhook (`app/main.py`):** Stripe sends a `checkout.session.completed` event to the `/stripe-webhook` endpoint.
+3.  **PDF Generation:** The webhook handler loads the user's session, retrieves the flight offer they paid for, and uses the `pdf_service` to generate a flight itinerary PDF.
+4.  **Proactive Delivery:**
+    *   The PDF is sent directly to the user on Telegram or WhatsApp.
+    *   A final confirmation message is sent.
+    *   The user's state is updated to `BOOKING_CONFIRMED`.
+
+---
+
+### Production Considerations: Handling PDF Files
+
+**IMPORTANT:** The current method for sending PDFs on WhatsApp is designed for **testing and local development only**.
+
+*   **Current Test Implementation:** The application saves the PDF to a local `temp_files` directory on the server and serves it via a special `/files/<filename>` endpoint. This works for a single, local server but is not suitable for a real-world deployment.
+
+*   **Why This Fails in Production:**
+    *   **Ephemeral Filesystem:** Hosting platforms like Render use ephemeral filesystems. Any files written to the local disk (like our PDFs) will be **permanently deleted** every time the service restarts or redeploys.
+    *   **Not Scalable:** If the application were scaled to run on multiple instances, a request for a file would only succeed if it hit the specific server instance that generated it.
+
+*   **Recommended Production Architecture:**
+    1.  **Use Cloud Storage:** Integrate a dedicated cloud storage service like **Amazon S3**, **Google Cloud Storage**, or **Cloudinary**.
+    2.  **Direct Upload:** When the `pdf_service` generates the PDF, instead of saving it locally, upload the file bytes directly to your cloud storage bucket.
+    3.  **Use Public URL:** The cloud storage service will provide a stable, publicly accessible URL for the uploaded file.
+    4.  **Send to Twilio:** Use this permanent public URL as the `media_url` when calling the Twilio API.
+
+This approach ensures that files are persisted reliably and can be accessed from anywhere, which is essential for a scalable and robust production application.
 
 ### Technology Stack Summary
 

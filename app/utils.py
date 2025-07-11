@@ -1,5 +1,6 @@
 import re
 from datetime import datetime
+import pytz
 
 def _format_duration(iso_duration):
     """Converts ISO 8601 duration (e.g., 'PT8H30M') to a human-readable format."""
@@ -13,7 +14,25 @@ def _format_duration(iso_duration):
     hours, minutes = match.groups(default='0')
     return f"{hours}h {minutes}m"
 
-def _format_flight_offers(flights, amadeus_service):
+def get_local_time(iata_code):
+    """
+    Get the current local time for a given IATA code.
+    This is a simplified example; a real implementation would be more robust.
+    """
+    # This is a very basic mapping. A real app would use a more comprehensive library.
+    timezone_map = {
+        "JFK": "America/New_York",
+        "LHR": "Europe/London",
+        "CDG": "Europe/Paris",
+        "LAX": "America/Los_Angeles",
+        # ... add other common IATA codes
+    }
+    
+    timezone_name = timezone_map.get(iata_code, "UTC")
+    local_tz = pytz.timezone(timezone_name)
+    return datetime.now(local_tz)
+
+def _format_flight_offers(flights):
     """Formats flight offers into a string."""
     if not flights:
         return "Sorry, I couldn't find any flights for the given criteria."
@@ -23,25 +42,14 @@ def _format_flight_offers(flights, amadeus_service):
         itinerary = flight['itineraries'][0]
         price = flight['price']['total']
         
-        first_segment = itinerary['segments'][0]
-        last_segment = itinerary['segments'][-1]
-
-        origin_code = first_segment['departure']['iataCode']
-        destination_code = last_segment['arrival']['iataCode']
+        # Get local time for departure and arrival airports
+        dep_time = get_local_time(itinerary['segments'][0]['departure']['iataCode']).strftime('%H:%M')
+        arr_time = get_local_time(itinerary['segments'][-1]['arrival']['iataCode']).strftime('%H:%M')
         
-        origin_name = amadeus_service.get_airport_name(origin_code)
-        destination_name = amadeus_service.get_airport_name(destination_code)
-
-        departure_time = datetime.fromisoformat(first_segment['departure']['at']).strftime('%I:%M %p')
-        duration = _format_duration(itinerary.get('duration', ''))
-        
-        num_stops = len(itinerary['segments']) - 1
-        stopover_text = "Direct" if num_stops == 0 else f"{num_stops} stop(s)"
-
-        # Bold the main line and add an extra newline for spacing
         response_lines.append(
-            f"*{i}. {origin_name} ({origin_code}) to {destination_name} ({destination_code}) for {price} {flight['price']['currency']}.*\n"
-            f"   Departs at: {departure_time}, Duration: {duration}, {stopover_text}\n"
+            f"{i}. Flight to {itinerary['segments'][-1]['arrival']['iataCode']} "
+            f"({dep_time} -> {arr_time}) "
+            f"for {price} {flight['price']['currency']}."
         )
 
     response_lines.append("\nReply with the number of the flight you'd like to book, or say 'no' to start over.")

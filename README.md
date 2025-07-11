@@ -6,7 +6,7 @@ This project is an AI-powered travel agent accessible via WhatsApp and Telegram.
 - **Multi-Platform Support**: Communicates with users via the Twilio API for WhatsApp and the Telegram Bot API.
 - **Natural Language Understanding**: Leverages the IO Intelligence API to understand conversations, manage a state machine (e.g., `GATHERING_INFO`, `FLIGHT_SELECTION`), and extract structured data like destinations, dates, and traveler details.
 - **Live Flight Search**: Integrates with the Amadeus Self-Service API to search for real-time flight offers based on the user's criteria.
-- **Payment Processing**: Creates secure Stripe Checkout links when a user selects a flight and confirms the payment via webhooks.
+- **Payment Processing**: Creates secure Stripe Checkout links. After a successful payment, it generates a PDF itinerary and sends it to the user.
 - **Persistent State**: Maintains conversation state for each user in a Redis database.
 - **Responsive Architecture**: Long-running tasks like flight searches are run in background threads, so the main application is never blocked.
 
@@ -46,12 +46,15 @@ This project is an AI-powered travel agent accessible via WhatsApp and Telegram.
 
 This application runs as a **single web service** on Render.
 
-It's a Flask application that handles incoming webhooks from Twilio and Telegram. To ensure the service is always responsive, it processes messages, manages conversation state, and runs long-running tasks (like flight searches) in **background threads**. This prevents a slow API call for one user from blocking the entire application. User session data is stored in a connected Render Redis instance.
+It's a Flask application that handles incoming webhooks from Twilio and Telegram. To ensure the service is always responsive, it processes messages, manages conversation state, and runs long-running tasks in background threads. After a user completes a payment via a Stripe webhook, the application generates a PDF of the flight itinerary and sends it back to the user on their messaging platform. User session data is stored in a connected Render Redis instance.
 
 This single-service, multi-threaded architecture simplifies deployment while maintaining a great user experience.
 
 For a simple, user-focused explanation, see `how-it-works.txt`.
-For a detailed, technical deep-dive, see `how-it-works.md`.
+For a detailed, technical deep-dive (including production considerations), see `how-it-works.md`.
+
+## Current Status & Limitations
+**Please Note:** This application is currently configured for sandbox testing. The final step of booking a flight with the Amadeus API after payment is **intentionally not yet implemented**. This is because real flight booking requires a production environment. The current post-payment flow focuses on generating and sending a mock itinerary for testing purposes.
 
 ## Setup and Installation
 

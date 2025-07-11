@@ -128,6 +128,17 @@ Your services will not start correctly until you provide them with the necessary
 
 **IMPORTANT:** Both the web and worker services need these variables to function correctly.
 
+### 2.3: Production Note on File Storage
+
+**Warning:** The default deployment of this application uses the server's local disk to temporarily store generated PDF files before sending them. Render's filesystem is **ephemeral**, meaning these files will be **permanently lost** whenever your service restarts or is redeployed.
+
+This setup is suitable for **testing only**.
+
+For a **production environment**, you must use a persistent cloud storage solution:
+1.  **Create a cloud storage bucket** (e.g., Amazon S3, Google Cloud Storage).
+2.  **Add your cloud storage credentials** (e.g., `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_BUCKET_NAME`) to your service's environment variables in the Render dashboard.
+3.  The application logic would need to be updated to upload files directly to this bucket instead of saving them locally.
+
 ---
 
 ## Phase 3: Testing and Go-Live

@@ -1,6 +1,6 @@
 import pytest
-from unittest.mock import patch
-from app.main import app, amadeus_service
+from unittest.mock import patch, mock_open
+from app.main import app, amadeus_service, send_whatsapp_pdf
 from twilio.twiml.messaging_response import MessagingResponse
 
 @pytest.fixture
@@ -46,43 +46,63 @@ def test_stripe_webhook_placeholder(client):
 
 @patch('stripe.Webhook.construct_event')
 @patch('app.main.load_session')
-@patch('app.main.save_session')
-@patch('app.main.twilio_client')
-def test_stripe_webhook_for_whatsapp(mock_twilio, mock_save, mock_load, mock_construct_event, client):
+@patch('app.main.create_flight_itinerary')
+@patch('app.main.send_whatsapp_pdf')
+def test_stripe_webhook_for_whatsapp_sends_pdf(mock_send_pdf, mock_create_pdf, mock_load_session, mock_construct_event, client):
     """
-    Tests the Stripe webhook's logic for a WhatsApp user.
+    Tests the Stripe webhook's logic for a WhatsApp user, ensuring it sends a PDF.
     """
-    user_id = "whatsapp:+15551112222"
-    mock_construct_event.return_value = {
-        'type': 'checkout.session.completed',
-        'data': {'object': {'client_reference_id': user_id}}
-    }
-    mock_load.return_value = ("AWAITING_PAYMENT", [], [])
+    # Mock the session and event data
+    mock_load_session.return_value = ('AWAITING_PAYMENT', [], [{'id': 'flight1'}])
+    mock_create_pdf.return_value = b'pdf-content'
+    mock_event = {'type': 'checkout.session.completed', 'data': {'object': {'client_reference_id': 'whatsapp:+123'}}}
+    mock_construct_event.return_value = mock_event
 
     response = client.post('/stripe-webhook', data='{}', headers={'Stripe-Signature': 'mock_sig'})
-    
+
     assert response.status_code == 200
-    mock_save.assert_called_with(user_id, "GATHERING_BOOKING_DETAILS", [], [])
-    mock_twilio.messages.create.assert_called_once()
+    mock_create_pdf.assert_called_once_with({'id': 'flight1'})
+    mock_send_pdf.assert_called_once_with('whatsapp:+123', b'pdf-content', 'flight_itinerary.pdf')
 
 @patch('stripe.Webhook.construct_event')
 @patch('app.main.load_session')
-@patch('app.main.save_session')
+@patch('app.main.create_flight_itinerary')
+@patch('app.main.send_telegram_pdf')
 @patch('app.main.send_message')
-def test_stripe_webhook_for_telegram(mock_send_message, mock_save, mock_load, mock_construct_event, client):
+def test_stripe_webhook_for_telegram_sends_pdf(mock_send_text, mock_send_pdf, mock_create_pdf, mock_load_session, mock_construct_event, client):
     """
-    Tests the Stripe webhook's logic for a Telegram user.
+    Tests the Stripe webhook's logic for a Telegram user, ensuring it sends a PDF.
     """
-    user_id = "telegram:123456789"
-    chat_id = "123456789"
-    mock_construct_event.return_value = {
-        'type': 'checkout.session.completed',
-        'data': {'object': {'client_reference_id': user_id}}
-    }
-    mock_load.return_value = ("AWAITING_PAYMENT", [], [])
+    # Mock the session and event data
+    mock_load_session.return_value = ('AWAITING_PAYMENT', [], [{'id': 'flight1'}])
+    mock_create_pdf.return_value = b'pdf-content'
+    mock_event = {'type': 'checkout.session.completed', 'data': {'object': {'client_reference_id': 'telegram:456'}}}
+    mock_construct_event.return_value = mock_event
 
     response = client.post('/stripe-webhook', data='{}', headers={'Stripe-Signature': 'mock_sig'})
 
     assert response.status_code == 200
-    mock_save.assert_called_with(user_id, "GATHERING_BOOKING_DETAILS", [], [])
-    mock_send_message.assert_called_once_with(chat_id, "Your payment was successful! To finalize the booking, please provide your full name and date of birth (e.g., John Doe YYYY-MM-DD).") 
+    mock_create_pdf.assert_called_once_with({'id': 'flight1'})
+    mock_send_pdf.assert_called_once_with('456', b'pdf-content', 'flight_itinerary.pdf')
+    mock_send_text.assert_called_with('456', "Thank you for your payment! Your flight itinerary has been sent as a PDF.")
+
+@patch('app.main.twilio_client.messages.create')
+@patch('app.main.open', new_callable=mock_open)
+@patch('app.main.os.path.exists', return_value=True)
+def test_send_whatsapp_pdf(mock_exists, mock_file_open, mock_twilio_create):
+    """
+    Test the send_whatsapp_pdf function for sending a PDF via Twilio.
+    """
+    with app.test_request_context('/'):
+        send_whatsapp_pdf("whatsapp:+15551234567", b"pdf-data", "test.pdf")
+
+    # Verify file was written
+    mock_file_open.assert_called_once()
+    handle = mock_file_open()
+    handle.write.assert_called_once_with(b"pdf-data")
+
+    # Verify Twilio was called
+    mock_twilio_create.assert_called_once()
+    args, kwargs = mock_twilio_create.call_args
+    assert kwargs['to'] == "whatsapp:+15551234567"
+    assert "http://localhost/files/" in kwargs['media_url'][0] 
