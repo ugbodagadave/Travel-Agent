@@ -119,7 +119,7 @@ def stripe_webhook():
                         send_telegram_pdf(chat_id, pdf_bytes, "flight_itinerary.pdf")
                         
                     # 3. Send a confirmation message
-                    confirmation_text = "Thank you for your payment! Your flight itinerary has been sent as a PDF."
+                    confirmation_text = "Thank you for booking with Flai. Your flight itinerary has been sent."
                     if user_id.startswith('telegram:'):
                         send_message(chat_id, confirmation_text)
 
