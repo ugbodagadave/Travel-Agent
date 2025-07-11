@@ -57,6 +57,18 @@ def send_whatsapp_pdf(to_number, pdf_bytes, filename="itinerary.pdf"):
 def health():
     return {'status': 'healthy'}, 200
 
+@app.route("/payment-success")
+def payment_success():
+    return """
+    <html>
+        <head><title>Payment Successful</title></head>
+        <body>
+            <h1>Thank you for your payment!</h1>
+            <p>Your flight itinerary is being processed and will be sent to you shortly.</p>
+        </body>
+    </html>
+    """, 200
+
 @app.route("/")
 def root():
     return {'message': 'Travel Agent API is running'}, 200

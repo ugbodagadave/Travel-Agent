@@ -3,15 +3,18 @@ from datetime import datetime
 import pytz
 
 def _format_duration(iso_duration):
-    """Converts ISO 8601 duration (e.g., 'PT8H30M') to a human-readable format."""
-    if not iso_duration:
+    """Formats an ISO 8601 duration string into a more readable format."""
+    if not iso_duration or not iso_duration.startswith('PT'):
         return ""
     
-    match = re.match(r'PT(?:(\d+)H)?(?:(\d+)M)?', iso_duration)
+    # Simple regex to parse PTxHxM format
+    match = re.match(r'PT(\d+)H(?:(\d+)M)?', iso_duration)
     if not match:
         return ""
-    
+        
     hours, minutes = match.groups(default='0')
+    hours, minutes = int(hours), int(minutes)
+    
     return f"{hours}h {minutes}m"
 
 def get_local_time(iata_code):
@@ -32,8 +35,8 @@ def get_local_time(iata_code):
     local_tz = pytz.timezone(timezone_name)
     return datetime.now(local_tz)
 
-def _format_flight_offers(flights):
-    """Formats flight offers into a string."""
+def _format_flight_offers(flights, amadeus_service):
+    """Formats flight offers into a string with full details."""
     if not flights:
         return "Sorry, I couldn't find any flights for the given criteria."
 
@@ -42,14 +45,25 @@ def _format_flight_offers(flights):
         itinerary = flight['itineraries'][0]
         price = flight['price']['total']
         
-        # Get local time for departure and arrival airports
-        dep_time = get_local_time(itinerary['segments'][0]['departure']['iataCode']).strftime('%H:%M')
-        arr_time = get_local_time(itinerary['segments'][-1]['arrival']['iataCode']).strftime('%H:%M')
+        first_segment = itinerary['segments'][0]
+        last_segment = itinerary['segments'][-1]
+
+        origin_code = first_segment['departure']['iataCode']
+        destination_code = last_segment['arrival']['iataCode']
         
+        origin_name = amadeus_service.get_airport_name(origin_code)
+        destination_name = amadeus_service.get_airport_name(destination_code)
+
+        departure_time = datetime.fromisoformat(first_segment['departure']['at']).strftime('%I:%M %p')
+        duration = _format_duration(itinerary.get('duration', ''))
+        
+        num_stops = len(itinerary['segments']) - 1
+        stopover_text = "Direct" if num_stops == 0 else f"{num_stops} stop(s)"
+
+        # Bold the main line and add an extra newline for spacing
         response_lines.append(
-            f"{i}. Flight to {itinerary['segments'][-1]['arrival']['iataCode']} "
-            f"({dep_time} -> {arr_time}) "
-            f"for {price} {flight['price']['currency']}."
+            f"*{i}. {origin_name} ({origin_code}) to {destination_name} ({destination_code}) for {price} {flight['price']['currency']}.*\n"
+            f"   Departs at: {departure_time}, Duration: {duration}, {stopover_text}\n"
         )
 
     response_lines.append("\nReply with the number of the flight you'd like to book, or say 'no' to start over.")

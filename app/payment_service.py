@@ -13,6 +13,10 @@ def create_checkout_session(flight_offer: dict, user_id: str) -> str | None:
     :return: The URL of the checkout session, or None if an error occurs.
     """
     try:
+        base_url = os.getenv("BASE_URL", "http://127.0.0.1:5000")
+        success_url = f"{base_url}/payment-success"
+        cancel_url = f"{base_url}/"
+
         # Extract necessary details from the flight offer
         price_details = flight_offer.get('price', {})
         total_price = float(price_details.get('total', 0))
@@ -36,15 +40,9 @@ def create_checkout_session(flight_offer: dict, user_id: str) -> str | None:
                 'quantity': 1,
             }],
             mode='payment',
-            success_url='https://example.com/success?session_id={CHECKOUT_SESSION_ID}', # Temporary URL
-            cancel_url='https://example.com/cancel', # Temporary URL
-            # Store our internal identifiers in the metadata
-            metadata={
-                'user_id': user_id,
-                # Storing the entire flight offer might exceed metadata limits.
-                # For now, we'll rely on retrieving it from the user's session state
-                # based on the user_id when the webhook is called.
-            }
+            success_url=success_url,
+            cancel_url=cancel_url,
+            client_reference_id=user_id  # Pass the user_id to the webhook
         )
         return session.url
     except Exception as e:
