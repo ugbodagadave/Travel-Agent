@@ -46,4 +46,45 @@ def test_get_ai_response_uses_confirmation_prompt_for_confirmation_state(mock_op
     # It should be right before the user's message
     system_prompts = [msg for msg in updated_history if msg['role'] == 'system']
     assert len(system_prompts) > 0
-    assert system_prompts[-1]['content'] == SYSTEM_PROMPT_CONFIRMATION 
+    assert system_prompts[-1]['content'] == SYSTEM_PROMPT_CONFIRMATION
+
+@patch("app.ai_service.client")
+def test_get_ai_response_on_topic_request(mock_openai_client):
+    """
+    Tests that a standard, on-topic travel request gets a valid response
+    and that the `max_tokens` parameter is passed.
+    """
+    mock_response = MagicMock()
+    mock_response.choices = [MagicMock()]
+    mock_response.choices[0].message.content = "Great! What is your destination?"
+    mock_openai_client.chat.completions.create.return_value = mock_response
+
+    user_message = "I want to fly to Paris"
+    _, history = get_ai_response(user_message, [], "GATHERING_INFO")
+
+    # Assert that the API was called with the correct parameters
+    mock_openai_client.chat.completions.create.assert_called_once()
+    call_args, call_kwargs = mock_openai_client.chat.completions.create.call_args
+    assert call_kwargs['max_tokens'] == 150
+    
+    # Assert that the response is as expected
+    assert history[-1]['content'] == "Great! What is your destination?"
+
+@patch("app.ai_service.client")
+def test_get_ai_response_off_topic_request(mock_openai_client):
+    """
+    Tests that a non-travel-related request is declined with the specific message.
+    """
+    mock_response = MagicMock()
+    mock_response.choices = [MagicMock()]
+    mock_response.choices[0].message.content = "Sorry, I can't help you with that."
+    mock_openai_client.chat.completions.create.return_value = mock_response
+
+    user_message = "What's the capital of Nebraska?"
+    response_text, _ = get_ai_response(user_message, [], "GATHERING_INFO")
+
+    # Assert that the API was called (to get the decline response)
+    mock_openai_client.chat.completions.create.assert_called_once()
+    
+    # Assert that the response is the exact decline message
+    assert response_text == "Sorry, I can't help you with that." 
