@@ -11,6 +11,28 @@ class AmadeusService:
             hostname='production' if os.getenv("APP_ENV") == "production" else "test"
         )
         self.airport_cache = {}
+        self.airline_cache = {}
+
+    def get_airline_name(self, airline_code):
+        """
+        Get the full airline name for a given IATA code.
+        Uses a simple in-memory cache to avoid repeated API calls.
+        """
+        if airline_code in self.airline_cache:
+            return self.airline_cache[airline_code]
+        
+        try:
+            response = self.amadeus.reference_data.airlines.get(airlineCodes=airline_code)
+            if response.data:
+                name = response.data[0]['businessName']
+                self.airline_cache[airline_code] = name
+                return name
+            else:
+                self.airline_cache[airline_code] = airline_code # Cache failure
+                return airline_code
+        except ResponseError:
+            self.airline_cache[airline_code] = airline_code # Cache failure
+            return airline_code
 
     def get_airport_name(self, iata_code):
         """

@@ -11,6 +11,7 @@ def test_format_flight_offers_direct_flight():
 
     mock_flights = [
         {
+            "airlineName": "Test Airline",
             "itineraries": [
                 {
                     "duration": "PT5H",
@@ -28,7 +29,7 @@ def test_format_flight_offers_direct_flight():
     formatted_string = _format_flight_offers(mock_flights, mock_amadeus_service)
     
     # Assert the exact format including bolding and spacing
-    expected_main_line = "*1. London Heathrow (LHR) to New York JFK (JFK) for 500.00 USD.*"
+    expected_main_line = "*1. Test Airline: London Heathrow (LHR) to New York JFK (JFK) for 500.00 USD.*"
     expected_details_line = "   Departs at: 09:00 AM, Duration: 5h 0m, Direct"
     
     assert expected_main_line in formatted_string
@@ -52,6 +53,7 @@ def test_format_flight_offers_with_stopover():
 
     mock_flights = [
         {
+            "airlineName": "Test Airline",
             "itineraries": [
                 {
                     "duration": "PT12H15M",
@@ -72,7 +74,7 @@ def test_format_flight_offers_with_stopover():
     ]
     formatted_string = _format_flight_offers(mock_flights, mock_amadeus_service)
     
-    expected_main_line = "*1. London Heathrow (LHR) to New York JFK (JFK) for 750.00 EUR.*"
+    expected_main_line = "*1. Test Airline: London Heathrow (LHR) to New York JFK (JFK) for 750.00 EUR.*"
     expected_details_line = "   Departs at: 11:00 AM, Duration: 12h 15m, 1 stop(s)"
 
     assert expected_main_line in formatted_string
@@ -96,6 +98,7 @@ def test_format_flight_offers_with_full_details():
 
     mock_flights = [
         {
+            "airlineName": "Test Airline",
             "itineraries": [
                 {
                     "duration": "PT8H30M",
@@ -112,7 +115,7 @@ def test_format_flight_offers_with_full_details():
     ]
     formatted_string = _format_flight_offers(mock_flights, mock_amadeus_service)
 
-    expected_main_line = "*1. Charles de Gaulle (CDG) to New York JFK (JFK) for 1200.50 USD.*"
+    expected_main_line = "*1. Test Airline: Charles de Gaulle (CDG) to New York JFK (JFK) for 1200.50 USD.*"
     expected_details_line = "   Departs at: 10:30 AM, Duration: 8h 30m, Direct"
 
     assert expected_main_line in formatted_string

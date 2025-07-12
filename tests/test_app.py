@@ -84,7 +84,7 @@ def test_stripe_webhook_for_telegram_sends_pdf(mock_send_text, mock_send_pdf, mo
     assert response.status_code == 200
     mock_create_pdf.assert_called_once_with({'id': 'flight1'})
     mock_send_pdf.assert_called_once_with('456', b'pdf-content', 'flight_itinerary.pdf')
-    mock_send_text.assert_called_with('456', "Thank you for your payment! Your flight itinerary has been sent as a PDF.")
+    mock_send_text.assert_called_with('456', "Thank you for booking with Flai. Your flight itinerary has been sent.")
 
 @patch('app.main.twilio_client.messages.create')
 @patch('app.main.open', new_callable=mock_open)

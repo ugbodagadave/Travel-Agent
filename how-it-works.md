@@ -52,8 +52,9 @@ This is the most critical part of the architecture.
 2.  **Execution:** The task's code executes:
     *   It calls the Amadeus API to get IATA codes.
     *   It calls the Amadeus API again to perform the live flight search. This can take several seconds without affecting the main application.
+    *   For each flight offer returned, it makes an additional call to the Amadeus API to look up the full airline name from its `carrierCode`.
 3.  **Proactive Response:**
-    *   Once the search is complete, the background thread formats the flight offers into a user-friendly list.
+    *   Once the search is complete, the background thread formats the flight offers into a user-friendly list, now including the airline name.
     *   It then connects directly to the Telegram API and sends the results as a **new, proactive message** to the user.
 4.  **Final State Update:** The thread updates the user's state in Redis to `FLIGHT_SELECTION` and saves the flight offers to their session.
 

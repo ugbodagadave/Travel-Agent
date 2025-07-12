@@ -10,6 +10,7 @@ def mock_amadeus_fixture():
     service = MagicMock()
     service.get_iata_code.side_effect = lambda city: "LHR" if city == "London" else "CDG"
     service.get_airport_name.side_effect = lambda code: "London Heathrow" if code == "LHR" else "Charles de Gaulle"
+    service.get_airline_name.return_value = "Test Airline"
     service.search_flights.return_value = [
         {
             "itineraries": [
@@ -17,6 +18,7 @@ def mock_amadeus_fixture():
                     "duration": "PT2H30M",
                     "segments": [
                         {
+                            "carrierCode": "TA",
                             "departure": {"iataCode": "LHR", "at": "2024-10-26T10:00:00"},
                             "arrival": {"iataCode": "CDG"}
                         }
@@ -59,6 +61,7 @@ def test_search_flights_task_flights_found_telegram(mock_send_telegram, mock_twi
     call_args = mock_send_telegram.call_args[0]
     assert call_args[0] == "123456" # chat_id
     assert "I found a few options for you" in call_args[1]
+    assert "Test Airline" in call_args[1]
     mock_twilio.messages.create.assert_not_called()
 
     # Check that the session was updated correctly

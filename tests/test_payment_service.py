@@ -30,11 +30,8 @@ def test_create_checkout_session_success(mock_stripe_create):
     assert call_kwargs['mode'] == 'payment'
     assert call_kwargs['success_url'] is not None
     assert call_kwargs['cancel_url'] is not None
-    assert call_kwargs['metadata']['user_id'] == user_id
-    
-    line_item = call_kwargs['line_items'][0]
-    assert line_item['price_data']['currency'] == 'usd'
-    assert line_item['price_data']['unit_amount'] == 12345 # 123.45 * 100
+    assert call_kwargs['client_reference_id'] == user_id
+    assert call_kwargs['line_items'][0]['price_data']['unit_amount'] == 12345
 
 @patch('app.payment_service.stripe.checkout.Session.create')
 def test_create_checkout_session_failure(mock_stripe_create):

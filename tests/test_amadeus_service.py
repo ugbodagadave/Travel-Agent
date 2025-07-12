@@ -24,6 +24,25 @@ def test_get_iata_code_success(mock_amadeus_client):
     )
     assert iata_code == 'LHR'
 
+def test_get_airline_name_success_and_cached(mock_amadeus_client):
+    """ Test successful airline name lookup and that the result is cached. """
+    mock_response = MagicMock()
+    mock_response.data = [{'businessName': 'American Airlines'}]
+    mock_amadeus_client.reference_data.airlines.get.return_value = mock_response
+
+    service = AmadeusService()
+
+    # First call - should trigger API call
+    name = service.get_airline_name('AA')
+    assert name == 'American Airlines'
+    mock_amadeus_client.reference_data.airlines.get.assert_called_once_with(airlineCodes='AA')
+
+    # Second call - should use cache, no new API call
+    name2 = service.get_airline_name('AA')
+    assert name2 == 'American Airlines'
+    mock_amadeus_client.reference_data.airlines.get.assert_called_once()
+
+
 def test_get_iata_code_not_found(mock_amadeus_client):
     """ Test IATA code lookup when no code is found. """
     mock_response = MagicMock()
