@@ -62,11 +62,13 @@ def _format_flight_offers(flights, amadeus_service):
 
         airline_name = flight.get('airlineName', 'Unknown Airline')
 
-        # Bold the main line and add an extra newline for spacing
+        # Format the flight details into a multi-line string
         response_lines.append(
-            f"*{i}. {airline_name}: {origin_name} ({origin_code}) to {destination_name} ({destination_code}) for {price} {flight['price']['currency']}.*\n"
-            f"   Departs at: {departure_time}, Duration: {duration}, {stopover_text}\n"
+            f"{i}. {origin_name} ({origin_code}) to {destination_name} ({destination_code}) for {price} {flight['price']['currency']}\n"
+            f"Departs at: {departure_time}\n"
+            f"Duration: {duration} [{stopover_text}]\n"
+            f"Airline: {airline_name}\n"
         )
 
-    response_lines.append("\nReply with the number of the flight you'd like to book, or say 'no' to start over.")
+    response_lines.append("Reply with the number of the flight you'd like to book, or say 'no' to start over.")
     return "\n".join(response_lines) 
