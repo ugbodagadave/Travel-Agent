@@ -112,4 +112,27 @@ def test_extract_flight_details_with_name(mock_openai_client):
     
     assert details.get("traveler_name") == "David Ugbodaga"
     assert details.get("origin") == "Barcelona"
-    assert details.get("destination") == "Paris" 
+    assert details.get("destination") == "Paris"
+
+@patch("app.ai_service.client")
+def test_extract_flight_details_with_travel_class(mock_openai_client):
+    """
+    Tests that the travel_class is correctly extracted from the conversation history.
+    """
+    # Mock the API response to return a JSON object with the travel class
+    mock_response = MagicMock()
+    mock_response.choices = [MagicMock()]
+    mock_response.choices[0].message.content = '{"traveler_name": "Jane Doe", "origin": "New York", "destination": "London", "departure_date": "2025-08-20", "return_date": null, "number_of_travelers": 1, "travel_class": "BUSINESS"}'
+    mock_openai_client.chat.completions.create.return_value = mock_response
+    
+    from app.ai_service import extract_flight_details_from_history
+    
+    # A sample conversation history where the user specifies a travel class
+    conversation_history = [
+        {"role": "user", "content": "I'm looking for a business class ticket from New York to London for August 20th, 2025. My name is Jane Doe."}
+    ]
+    
+    details = extract_flight_details_from_history(conversation_history)
+    
+    assert details.get("travel_class") == "BUSINESS"
+    assert details.get("traveler_name") == "Jane Doe" 

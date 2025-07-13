@@ -73,6 +73,16 @@ def _format_flight_offers(flights, amadeus_service):
         
         num_stops = len(itinerary['segments']) - 1
         stopover_text = "Direct" if num_stops == 0 else f"{num_stops} stop(s)"
+        
+        # Get travel class from the first traveler pricing details
+        travel_class = "ECONOMY" # Default
+        try:
+            # The structure is nested, so we use .get() to avoid errors if a key is missing
+            travel_class = flight.get('travelerPricings', [{}])[0].get('fareDetailsBySegment', [{}])[0].get('class', 'ECONOMY')
+        except (IndexError, KeyError):
+            pass # Keep the default
+            
+        class_text = f"[{stopover_text} - {travel_class.replace('_', ' ').title()}]"
 
         airline_name = flight.get('airlineName', 'Unknown Airline')
 
@@ -80,7 +90,7 @@ def _format_flight_offers(flights, amadeus_service):
         response_lines.append(
             f"{i}. {origin_name} ({origin_code}) to {destination_name} ({destination_code}) for {price} {flight['price']['currency']}\n"
             f"Departs at: {departure_time}\n"
-            f"Duration: {duration} [{stopover_text}]\n"
+            f"Duration: {duration} {class_text}\n"
             f"Airline: {airline_name}\n"
         )
 

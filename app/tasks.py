@@ -50,13 +50,20 @@ def search_flights_task(user_id, flight_details):
         offers = []
         if origin_iata and destination_iata:
             print(f"[{user_id}] - INFO: Searching flights with Amadeus...")
+            
+            search_params = {
+                "originLocationCode": origin_iata,
+                "destinationLocationCode": destination_iata,
+                "departureDate": flight_details.get('departure_date'),
+                "adults": str(flight_details.get('number_of_travelers', '1'))
+            }
+            if 'travel_class' in flight_details and flight_details['travel_class']:
+                search_params['travelClass'] = flight_details['travel_class']
+
             try:
                 offers = _search_flights_with_retry(
                     amadeus_service,
-                    originLocationCode=origin_iata,
-                    destinationLocationCode=destination_iata,
-                    departureDate=flight_details.get('departure_date'),
-                    adults=str(flight_details.get('number_of_travelers', '1'))
+                    **search_params
                 )
                 print(f"[{user_id}] - INFO: Amadeus search returned {len(offers) if offers else 0} offers.")
             except RetryError:

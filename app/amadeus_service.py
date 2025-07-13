@@ -84,19 +84,21 @@ class AmadeusService:
 
     def search_flights(self, **kwargs):
         """
-        Searches for flights with the given parameters.
-        :param kwargs: Dictionary of parameters for the flight search.
-                       (e.g., originLocationCode, destinationLocationCode, departureDate, adults)
-        :return: A list of flight offers.
+        Searches for flights using the Amadeus API.
+        The kwargs should match the Amadeus 'get' method for flight offers.
         """
         try:
-            print(f"DEBUG: Amadeus search_flights params: {kwargs}") # DEBUG PRINT
+            print(f"DEBUG: Amadeus search_flights params: {kwargs}")
             response = self.amadeus.shopping.flight_offers_search.get(**kwargs)
             return response.data
-        except ResponseError as error:
-            # Log the full error for debugging, but return None to prevent crash
-            print(f"Amadeus API Error (search_flights): {error.response.result if hasattr(error, 'response') else error}")
-            return None
+        except ResponseError as e:
+            print(f"Amadeus API Error during flight search: {e}")
+            # Safely log request and response if they exist on the error object
+            if hasattr(e, 'request'):
+                print(f"Request: {e.request}")
+            if e.response and hasattr(e.response, 'result'):
+                print(f"Response: {e.response.result}")
+            return []
 
     def book_flight(self, flight_offer, traveler):
         """

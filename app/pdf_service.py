@@ -24,8 +24,10 @@ def create_flight_itinerary(flight_offer):
     if flight_offer:
         price = flight_offer['price']['total']
         currency = flight_offer['price']['currency']
+        travel_class = flight_offer.get('travelerPricings', [{}])[0].get('fareDetailsBySegment', [{}])[0].get('class', 'ECONOMY').replace('_', ' ').title()
         
         pdf.cell(200, 10, f"Total Price: {price} {currency}", ln=True)
+        pdf.cell(200, 10, f"Class: {travel_class}", ln=True)
         
         for i, itinerary in enumerate(flight_offer['itineraries']):
             pdf.set_font("Arial", 'B', 12)

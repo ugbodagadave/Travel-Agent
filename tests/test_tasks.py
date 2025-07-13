@@ -162,4 +162,32 @@ def test_search_flights_task_attaches_traveler_name(mock_send_telegram, mock_sav
     
     # Assert that the traveler_name is present in the saved offers
     assert len(saved_offers) > 0
-    assert saved_offers[0].get('traveler_name') == 'David Ugbodaga' 
+    assert saved_offers[0].get('traveler_name') == 'David Ugbodaga'
+
+@patch("app.tasks.AmadeusService")
+@patch("app.tasks.load_session")
+@patch("app.tasks.save_session")
+@patch("app.tasks.send_message")
+def test_search_flights_task_uses_travel_class(mock_send_telegram, mock_save_session, mock_load_session, MockAmadeusService, mock_amadeus_fixture):
+    """
+    Tests that the search_flights_task correctly uses the travel_class parameter.
+    """
+    MockAmadeusService.return_value = mock_amadeus_fixture
+    user_id = "telegram:789012"
+    flight_details = {
+        'origin': 'London', 
+        'destination': 'Paris', 
+        'departure_date': '2024-10-26', 
+        'travel_class': 'BUSINESS'
+    }
+    mock_load_session.return_value = ("SEARCH_IN_PROGRESS", ["history"], [])
+    
+    # Run the task
+    search_flights_task(user_id, flight_details)
+    
+    # Verify that AmadeusService's search_flights was called with the travelClass
+    mock_amadeus_fixture.search_flights.assert_called_once()
+    call_kwargs = mock_amadeus_fixture.search_flights.call_args[1]
+    
+    assert 'travelClass' in call_kwargs
+    assert call_kwargs['travelClass'] == 'BUSINESS' 

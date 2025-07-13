@@ -23,7 +23,8 @@ def test_format_flight_offers_direct_flight():
                     ]
                 }
             ],
-            "price": {"total": "500.00", "currency": "USD"}
+            "price": {"total": "500.00", "currency": "USD"},
+            "travelerPricings": [{"fareDetailsBySegment": [{"class": "ECONOMY"}]}]
         }
     ]
     formatted_string = _format_flight_offers(mock_flights, mock_amadeus_service)
@@ -31,7 +32,7 @@ def test_format_flight_offers_direct_flight():
     # Assert the new multi-line format
     assert "1. London Heathrow (LHR) to New York JFK (JFK) for 500.00 USD" in formatted_string
     assert "Departs at: 09:00 AM" in formatted_string
-    assert "Duration: 5h 0m [Direct]" in formatted_string
+    assert "Duration: 5h 0m [Direct - Economy]" in formatted_string
     assert "Airline: Test Airline" in formatted_string
 
 
@@ -66,7 +67,8 @@ def test_format_flight_offers_with_stopover():
                     ]
                 }
             ],
-            "price": {"total": "750.00", "currency": "EUR"}
+            "price": {"total": "750.00", "currency": "EUR"},
+            "travelerPricings": [{"fareDetailsBySegment": [{"class": "BUSINESS"}]}]
         }
     ]
     formatted_string = _format_flight_offers(mock_flights, mock_amadeus_service)
@@ -74,7 +76,7 @@ def test_format_flight_offers_with_stopover():
     # Assert the new multi-line format
     assert "1. London Heathrow (LHR) to New York JFK (JFK) for 750.00 EUR" in formatted_string
     assert "Departs at: 11:00 AM" in formatted_string
-    assert "Duration: 12h 15m [1 stop(s)]" in formatted_string
+    assert "Duration: 12h 15m [1 stop(s) - Business]" in formatted_string
     assert "Airline: Test Airline" in formatted_string
 
 
@@ -106,7 +108,8 @@ def test_format_flight_offers_with_full_details():
                     ]
                 }
             ],
-            "price": {"total": "1200.50", "currency": "USD"}
+            "price": {"total": "1200.50", "currency": "USD"},
+            "travelerPricings": [{"fareDetailsBySegment": [{"class": "FIRST"}]}]
         }
     ]
     formatted_string = _format_flight_offers(mock_flights, mock_amadeus_service)
@@ -114,7 +117,7 @@ def test_format_flight_offers_with_full_details():
     # Assert the new multi-line format
     assert "1. Charles de Gaulle (CDG) to New York JFK (JFK) for 1200.50 USD" in formatted_string
     assert "Departs at: 10:30 AM" in formatted_string
-    assert "Duration: 8h 30m [Direct]" in formatted_string
+    assert "Duration: 8h 30m [Direct - First]" in formatted_string
     assert "Airline: Test Airline" in formatted_string
 
 def test_format_flight_offers_new_format():
@@ -142,7 +145,8 @@ def test_format_flight_offers_new_format():
                     ]
                 }
             ],
-            "price": {"total": "303.08", "currency": "EUR"}
+            "price": {"total": "303.08", "currency": "EUR"},
+            "travelerPricings": [{"fareDetailsBySegment": [{"class": "PREMIUM_ECONOMY"}]}]
         }
     ]
     formatted_string = _format_flight_offers(mock_flights, mock_amadeus_service)
@@ -150,7 +154,7 @@ def test_format_flight_offers_new_format():
     expected_lines = [
         "1. GATWICK (LGW) to JOHN F KENNEDY INTL (JFK) for 303.08 EUR",
         "Departs at: 01:05 PM",
-        "Duration: 7h 50m [Direct]",
+        "Duration: 7h 50m [Direct - Premium Economy]",
         "Airline: A.P.G. DISTRIBUTION SYSTEM"
     ]
     

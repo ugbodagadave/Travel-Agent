@@ -114,6 +114,30 @@ def test_search_flights_success(mock_amadeus_client):
     assert len(flights) == 2
     assert flights[0]['id'] == 'flight1'
 
+def test_search_flights_with_travel_class(mock_amadeus_client):
+    """ Test successful flight search with a travel class specified. """
+    mock_response = MagicMock()
+    mock_response.data = [{'id': 'flight1', 'travelerPricings': [{'fareDetailsBySegment': [{'class': 'BUSINESS'}]}]}]
+    mock_amadeus_client.shopping.flight_offers_search.get.return_value = mock_response
+
+    search_params = {
+        'originLocationCode': 'JFK',
+        'destinationLocationCode': 'LAX',
+        'departureDate': '2024-12-25',
+        'adults': 1,
+        'travelClass': 'BUSINESS'  # Specify the class
+    }
+
+    service = AmadeusService()
+    flights = service.search_flights(**search_params)
+    
+    # Assert that the API was called with the correct parameters, including the class
+    mock_amadeus_client.shopping.flight_offers_search.get.assert_called_once_with(**search_params)
+    
+    assert len(flights) == 1
+    # A simple check to see if the response seems to reflect the class
+    assert flights[0]['travelerPricings'][0]['fareDetailsBySegment'][0]['class'] == 'BUSINESS'
+
 def test_search_flights_api_error(mock_amadeus_client):
     """ Test flight search with an API error. """
     mock_amadeus_client.shopping.flight_offers_search.get.side_effect = ResponseError(MagicMock())
@@ -121,7 +145,7 @@ def test_search_flights_api_error(mock_amadeus_client):
     service = AmadeusService()
     flights = service.search_flights(originLocationCode='JFK', destinationLocationCode='LAX', departureDate='2024-12-25', adults=1)
 
-    assert flights is None
+    assert flights == []
 
 def test_book_flight_success(mock_amadeus_client):
     """ Test successful flight booking. """
