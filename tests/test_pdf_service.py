@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import patch
 from app.pdf_service import create_flight_itinerary
-from PyPDF2 import PdfReader
+from pypdf import PdfReader
 import io
 
 @pytest.fixture
@@ -19,7 +19,7 @@ def mock_flight_offer_with_class():
                 ]
             }
         ],
-        'travelerPricings': [{'fareDetailsBySegment': [{'class': 'BUSINESS'}]}]
+        'travelerPricings': [{'fareDetailsBySegment': [{'cabin': 'BUSINESS'}]}]
     }
 
 def test_create_flight_itinerary_contains_travel_class(mock_flight_offer_with_class):

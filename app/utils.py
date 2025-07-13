@@ -78,7 +78,7 @@ def _format_flight_offers(flights, amadeus_service):
         travel_class = "ECONOMY" # Default
         try:
             # The structure is nested, so we use .get() to avoid errors if a key is missing
-            travel_class = flight.get('travelerPricings', [{}])[0].get('fareDetailsBySegment', [{}])[0].get('class', 'ECONOMY')
+            travel_class = flight.get('travelerPricings', [{}])[0].get('fareDetailsBySegment', [{}])[0].get('cabin', 'ECONOMY')
         except (IndexError, KeyError):
             pass # Keep the default
             

@@ -24,7 +24,7 @@ def test_format_flight_offers_direct_flight():
                 }
             ],
             "price": {"total": "500.00", "currency": "USD"},
-            "travelerPricings": [{"fareDetailsBySegment": [{"class": "ECONOMY"}]}]
+            "travelerPricings": [{"fareDetailsBySegment": [{"cabin": "ECONOMY"}]}]
         }
     ]
     formatted_string = _format_flight_offers(mock_flights, mock_amadeus_service)
@@ -68,7 +68,7 @@ def test_format_flight_offers_with_stopover():
                 }
             ],
             "price": {"total": "750.00", "currency": "EUR"},
-            "travelerPricings": [{"fareDetailsBySegment": [{"class": "BUSINESS"}]}]
+            "travelerPricings": [{"fareDetailsBySegment": [{"cabin": "BUSINESS"}]}]
         }
     ]
     formatted_string = _format_flight_offers(mock_flights, mock_amadeus_service)
@@ -109,7 +109,7 @@ def test_format_flight_offers_with_full_details():
                 }
             ],
             "price": {"total": "1200.50", "currency": "USD"},
-            "travelerPricings": [{"fareDetailsBySegment": [{"class": "FIRST"}]}]
+            "travelerPricings": [{"fareDetailsBySegment": [{"cabin": "FIRST"}]}]
         }
     ]
     formatted_string = _format_flight_offers(mock_flights, mock_amadeus_service)
@@ -146,7 +146,7 @@ def test_format_flight_offers_new_format():
                 }
             ],
             "price": {"total": "303.08", "currency": "EUR"},
-            "travelerPricings": [{"fareDetailsBySegment": [{"class": "PREMIUM_ECONOMY"}]}]
+            "travelerPricings": [{"fareDetailsBySegment": [{"cabin": "PREMIUM_ECONOMY"}]}]
         }
     ]
     formatted_string = _format_flight_offers(mock_flights, mock_amadeus_service)
