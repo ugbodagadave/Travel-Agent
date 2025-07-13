@@ -50,10 +50,12 @@ def test_stripe_webhook_placeholder(client):
 @patch('app.main.send_whatsapp_pdf')
 def test_stripe_webhook_for_whatsapp_sends_pdf(mock_send_pdf, mock_create_pdf, mock_load_session, mock_construct_event, client):
     """
-    Tests the Stripe webhook's logic for a WhatsApp user, ensuring it sends a PDF.
+    Tests the Stripe webhook's logic for a WhatsApp user, ensuring it sends a PDF
+    with the correct dynamic filename.
     """
-    # Mock the session and event data
-    mock_load_session.return_value = ('AWAITING_PAYMENT', [], [{'id': 'flight1'}])
+    # Mock the session and event data, now including the traveler's name
+    mock_session_data = ('AWAITING_PAYMENT', [], [{'id': 'flight1', 'traveler_name': 'David Ugbodaga'}])
+    mock_load_session.return_value = mock_session_data
     mock_create_pdf.return_value = b'pdf-content'
     mock_event = {'type': 'checkout.session.completed', 'data': {'object': {'client_reference_id': 'whatsapp:+123'}}}
     mock_construct_event.return_value = mock_event
@@ -61,8 +63,9 @@ def test_stripe_webhook_for_whatsapp_sends_pdf(mock_send_pdf, mock_create_pdf, m
     response = client.post('/stripe-webhook', data='{}', headers={'Stripe-Signature': 'mock_sig'})
 
     assert response.status_code == 200
-    mock_create_pdf.assert_called_once_with({'id': 'flight1'})
-    mock_send_pdf.assert_called_once_with('whatsapp:+123', b'pdf-content', 'flight_itinerary.pdf')
+    mock_create_pdf.assert_called_once_with(mock_session_data[2][0])
+    # Assert that the filename is now dynamic
+    mock_send_pdf.assert_called_once_with('whatsapp:+123', b'pdf-content', 'flight_ticket_David_Ugbodaga.pdf')
 
 @patch('stripe.Webhook.construct_event')
 @patch('app.main.load_session')
@@ -71,10 +74,12 @@ def test_stripe_webhook_for_whatsapp_sends_pdf(mock_send_pdf, mock_create_pdf, m
 @patch('app.main.send_message')
 def test_stripe_webhook_for_telegram_sends_pdf(mock_send_text, mock_send_pdf, mock_create_pdf, mock_load_session, mock_construct_event, client):
     """
-    Tests the Stripe webhook's logic for a Telegram user, ensuring it sends a PDF.
+    Tests the Stripe webhook's logic for a Telegram user, ensuring it sends a PDF
+    with the correct dynamic filename and an updated confirmation message.
     """
-    # Mock the session and event data
-    mock_load_session.return_value = ('AWAITING_PAYMENT', [], [{'id': 'flight1'}])
+    # Mock the session and event data, now including the traveler's name
+    mock_session_data = ('AWAITING_PAYMENT', [], [{'id': 'flight1', 'traveler_name': 'Jane Doe'}])
+    mock_load_session.return_value = mock_session_data
     mock_create_pdf.return_value = b'pdf-content'
     mock_event = {'type': 'checkout.session.completed', 'data': {'object': {'client_reference_id': 'telegram:456'}}}
     mock_construct_event.return_value = mock_event
@@ -82,9 +87,12 @@ def test_stripe_webhook_for_telegram_sends_pdf(mock_send_text, mock_send_pdf, mo
     response = client.post('/stripe-webhook', data='{}', headers={'Stripe-Signature': 'mock_sig'})
 
     assert response.status_code == 200
-    mock_create_pdf.assert_called_once_with({'id': 'flight1'})
-    mock_send_pdf.assert_called_once_with('456', b'pdf-content', 'flight_itinerary.pdf')
-    mock_send_text.assert_called_with('456', "Thank you for booking with Flai. Your flight itinerary has been sent.")
+    mock_create_pdf.assert_called_once_with(mock_session_data[2][0])
+    # Assert that the filename is now dynamic
+    mock_send_pdf.assert_called_once_with('456', b'pdf-content', 'flight_ticket_Jane_Doe.pdf')
+    # Assert that the confirmation text includes the new dynamic filename
+    expected_text = "Thank you for booking with Flai. Your flight ticket (flight_ticket_Jane_Doe.pdf) has been sent."
+    mock_send_text.assert_called_with('456', expected_text)
 
 @patch('app.main.twilio_client.messages.create')
 @patch('app.main.open', new_callable=mock_open)

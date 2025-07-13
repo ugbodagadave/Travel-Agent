@@ -35,6 +35,20 @@ def get_local_time(iata_code):
     local_tz = pytz.timezone(timezone_name)
     return datetime.now(local_tz)
 
+def sanitize_filename(name):
+    """
+    Sanitizes a string to be a valid filename.
+    Replaces spaces with underscores and removes disallowed characters.
+    """
+    if not name:
+        return "traveler"
+    
+    # Replace spaces with underscores
+    s = name.replace(" ", "_")
+    # Remove characters that are not letters, numbers, underscores, or hyphens
+    s = re.sub(r'(?u)[^-\w.]', '', s)
+    return s
+
 def _format_flight_offers(flights, amadeus_service):
     """Formats flight offers into a string with full details."""
     if not flights:

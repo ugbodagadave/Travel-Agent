@@ -10,6 +10,7 @@ from app.telegram_service import send_message, send_pdf as send_telegram_pdf
 from app.core_logic import process_message
 from app.new_session_manager import load_session, save_session
 from app.pdf_service import create_flight_itinerary
+from app.utils import sanitize_filename
 
 app = Flask(__name__)
 
@@ -107,19 +108,23 @@ def stripe_webhook():
             if flight_offers:
                 selected_flight = flight_offers[0]
                 
+                # Get the traveler's name and create a sanitized filename
+                traveler_name = selected_flight.get('traveler_name', 'traveler')
+                pdf_filename = f"flight_ticket_{sanitize_filename(traveler_name)}.pdf"
+
                 # 1. Create the PDF
                 pdf_bytes = create_flight_itinerary(selected_flight)
                 
                 # 2. Send the PDF based on the platform
                 try:
                     if user_id.startswith('whatsapp:'):
-                        send_whatsapp_pdf(user_id, pdf_bytes, "flight_itinerary.pdf")
+                        send_whatsapp_pdf(user_id, pdf_bytes, pdf_filename)
                     elif user_id.startswith('telegram:'):
                         chat_id = user_id.split(':')[1]
-                        send_telegram_pdf(chat_id, pdf_bytes, "flight_itinerary.pdf")
+                        send_telegram_pdf(chat_id, pdf_bytes, pdf_filename)
                         
                     # 3. Send a confirmation message
-                    confirmation_text = "Thank you for booking with Flai. Your flight itinerary has been sent."
+                    confirmation_text = f"Thank you for booking with Flai. Your flight ticket ({pdf_filename}) has been sent."
                     if user_id.startswith('telegram:'):
                         send_message(chat_id, confirmation_text)
 
