@@ -92,34 +92,22 @@ def process_message(user_id, incoming_msg, amadeus_service: AmadeusService):
                 selection = int(incoming_msg.strip())
                 if 1 <= selection <= len(flight_offers):
                     selected_flight = flight_offers[selection - 1]
-                    response_messages.append("Great choice! To proceed with the booking, please provide the full name of the traveler as it appears on their passport.")
-                    state = "AWAITING_TRAVELER_DETAILS"
-                    save_session(user_id, state, conversation_history, [selected_flight])
+                    checkout_url = create_checkout_session(selected_flight, user_id)
+                    
+                    if checkout_url:
+                        response_messages.append(f"Great! Please complete your payment using this secure link: {checkout_url}")
+                        state = "AWAITING_PAYMENT"
+                        # Save the selected flight in the session for the webhook
+                        save_session(user_id, state, conversation_history, [selected_flight])
+                    else:
+                        response_messages.append("I'm sorry, I couldn't create a payment link. Please try again.")
+                        save_session(user_id, state, conversation_history, flight_offers)
                 else:
                     response_messages.append("Invalid selection. Please choose a number from the list.")
                     save_session(user_id, state, conversation_history, flight_offers)
             except (ValueError, IndexError):
                 response_messages.append("I didn't understand. Please reply with the flight number.")
                 save_session(user_id, state, conversation_history, flight_offers)
-
-    elif state == "AWAITING_TRAVELER_DETAILS":
-        traveler_details = extract_traveler_details(incoming_msg)
-        if traveler_details and traveler_details.get("fullName"):
-            # The selected flight is the first (and only) in the list
-            selected_flight = flight_offers[0]
-            selected_flight['traveler_name'] = traveler_details["fullName"] # Save the name
-
-            checkout_url = create_checkout_session(selected_flight, user_id)
-            if checkout_url:
-                response_messages.append(f"Thank you, {traveler_details['fullName']}. Please complete your payment using this secure link: {checkout_url}")
-                state = "AWAITING_PAYMENT"
-                save_session(user_id, state, conversation_history, [selected_flight])
-            else:
-                response_messages.append("I'm sorry, I couldn't create a payment link. Please try again.")
-                save_session(user_id, state, conversation_history, flight_offers) # Keep old offers
-        else:
-            response_messages.append("I'm sorry, I couldn't understand the name. Please provide the traveler's full name.")
-            save_session(user_id, state, conversation_history, flight_offers)
 
     else:
         # Default fallback for unhandled states

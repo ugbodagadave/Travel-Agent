@@ -119,7 +119,8 @@ def extract_flight_details_from_history(conversation_history: list) -> dict:
     prompt = f"""
     Based on the following conversation history, extract the flight details into a JSON object.
     The current year is {datetime.now().year}.
-    The JSON object should have these exact keys: "origin", "destination", "departure_date", "return_date", "number_of_travelers".
+    The JSON object should have these exact keys: "traveler_name", "origin", "destination", "departure_date", "return_date", "number_of_travelers".
+    - "traveler_name" should be the full name of the person traveling.
     - "departure_date" and "return_date" must be in YYYY-MM-DD format.
     - "return_date" should be null if it's a one-way trip.
     - "number_of_travelers" should be an integer.

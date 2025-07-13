@@ -123,4 +123,32 @@ def test_process_message_search_in_progress(mock_save_session, mock_load_session
 
     assert len(response) == 1
     assert "I'm still looking for flights" in response[0]
-    mock_save_session.assert_called_once() 
+    mock_save_session.assert_called_once()
+
+@patch("app.core_logic.load_session")
+@patch("app.core_logic.save_session")
+@patch("app.core_logic.create_checkout_session")
+def test_flight_selection_creates_payment_link(mock_create_checkout, mock_save_session, mock_load_session):
+    """
+    Tests that a valid flight selection transitions to the AWAITING_PAYMENT state
+    and generates a Stripe checkout link.
+    """
+    user_id = "test_user_selecting"
+    flight_offers = [
+        {'id': 'flight1', 'traveler_name': 'David Ugbodaga'},
+        {'id': 'flight2', 'traveler_name': 'David Ugbodaga'}
+    ]
+    mock_load_session.return_value = ("FLIGHT_SELECTION", ["history"], flight_offers)
+    mock_create_checkout.return_value = "https://checkout.stripe.com/mock_url"
+
+    response = process_message(user_id, "1", MagicMock())
+
+    # Check that the checkout session was created with the correct flight
+    mock_create_checkout.assert_called_once_with(flight_offers[0], user_id)
+    
+    # Check for the correct user response
+    assert "Great! Please complete your payment" in response[0]
+    assert "https://checkout.stripe.com/mock_url" in response[0]
+    
+    # Check that the session was updated correctly
+    mock_save_session.assert_called_once_with(user_id, "AWAITING_PAYMENT", ["history"], [flight_offers[0]]) 

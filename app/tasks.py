@@ -67,11 +67,14 @@ def search_flights_task(user_id, flight_details):
 
         
         if offers:
-            # Enrich offers with airline names
+            # Enrich offers with airline names and the traveler's name
+            traveler_name = flight_details.get('traveler_name')
             for offer in offers:
                 carrier_code = offer['itineraries'][0]['segments'][0]['carrierCode']
                 airline_name = amadeus_service.get_airline_name(carrier_code)
                 offer['airlineName'] = airline_name
+                if traveler_name:
+                    offer['traveler_name'] = traveler_name
 
             response_msg = _format_flight_offers(offers, amadeus_service)
             next_state = "FLIGHT_SELECTION"

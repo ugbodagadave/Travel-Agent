@@ -129,4 +129,37 @@ def test_search_flights_task_catastrophic_failure(mocker, mock_user_id):
     mock_send_message.assert_called_with('12345', "I'm sorry, but I encountered an unexpected error while searching for flights. Please try again in a moment.")
     
     # Assert that the session was reset to GATHERING_INFO
-    mock_save_session.assert_called_with(mock_user_id, "GATHERING_INFO", [], []) 
+    mock_save_session.assert_called_with(mock_user_id, "GATHERING_INFO", [], [])
+
+@patch("app.tasks.AmadeusService")
+@patch("app.tasks.load_session")
+@patch("app.tasks.save_session")
+@patch("app.tasks.send_message")
+def test_search_flights_task_attaches_traveler_name(mock_send_telegram, mock_save_session, mock_load_session, MockAmadeusService, mock_amadeus_fixture):
+    """
+    Tests that the traveler's name is correctly attached to the flight offers.
+    """
+    MockAmadeusService.return_value = mock_amadeus_fixture
+    user_id = "telegram:123456"
+    flight_details = {
+        'origin': 'London', 
+        'destination': 'Paris', 
+        'departure_date': '2024-10-26', 
+        'number_of_travelers': '1',
+        'traveler_name': 'David Ugbodaga'  # The name to be attached
+    }
+    mock_load_session.return_value = ("SEARCH_IN_PROGRESS", ["history"], [])
+    
+    # Run the task
+    search_flights_task(user_id, flight_details)
+    
+    # Check that the session was updated correctly
+    mock_save_session.assert_called_once()
+    save_args = mock_save_session.call_args[0]
+    
+    # The flight offers are the 4th argument to save_session
+    saved_offers = save_args[3]
+    
+    # Assert that the traveler_name is present in the saved offers
+    assert len(saved_offers) > 0
+    assert saved_offers[0].get('traveler_name') == 'David Ugbodaga' 

@@ -88,4 +88,28 @@ def test_get_ai_response_off_topic_request(mock_openai_client):
     mock_openai_client.chat.completions.create.assert_called_once()
     
     # Assert that the response is the exact decline message
-    assert response_text == "Sorry, I can't help you with that." 
+    assert response_text == "Sorry, I can't help you with that."
+
+@patch("app.ai_service.client")
+def test_extract_flight_details_with_name(mock_openai_client):
+    """
+    Tests that the traveler's name is correctly extracted from the conversation history.
+    """
+    # Mock the API response to return a JSON object with the name
+    mock_response = MagicMock()
+    mock_response.choices = [MagicMock()]
+    mock_response.choices[0].message.content = '{"traveler_name": "David Ugbodaga", "origin": "Barcelona", "destination": "Paris", "departure_date": "2025-07-16", "return_date": null, "number_of_travelers": 1}'
+    mock_openai_client.chat.completions.create.return_value = mock_response
+    
+    from app.ai_service import extract_flight_details_from_history
+    
+    # A sample conversation history where the user provides their name
+    conversation_history = [
+        {"role": "user", "content": "Hi, my name is David Ugbodaga and I want to book a one-way flight for 1 person from Barcelona to Paris on July 16th, 2025."}
+    ]
+    
+    details = extract_flight_details_from_history(conversation_history)
+    
+    assert details.get("traveler_name") == "David Ugbodaga"
+    assert details.get("origin") == "Barcelona"
+    assert details.get("destination") == "Paris" 
