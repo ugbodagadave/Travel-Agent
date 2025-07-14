@@ -35,7 +35,7 @@ class CircleService:
                 # Second call to generate a deposit address for the new wallet
                 address_payload = {
                     "idempotencyKey": str(uuid.uuid4()),
-                    "currency": "USD",
+                    "currency": "USDC",
                     "chain": "ETH-SEPOLIA"
                 }
                 address_response = requests.post(
