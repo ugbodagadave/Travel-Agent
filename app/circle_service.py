@@ -16,14 +16,12 @@ class CircleService:
         return str(uuid.uuid4())
 
     def create_payment_wallet(self):
-        """
-        Creates a new wallet with a unique address for a one-time payment.
-        Returns the wallet address and ID, or None if an error occurs.
-        """
+        """Creates a new wallet for a single payment."""
         # This is a simplified wallet creation for a specific use case.
         # In a real-world scenario, you might have more robust logic.
         payload = {
-            "description": f"Flight Payment Wallet - {uuid.uuid4()}"
+            "idempotencyKey": str(uuid.uuid4()),
+            "description": "Flight Payment Wallet"
         }
         try:
             response = requests.post(
