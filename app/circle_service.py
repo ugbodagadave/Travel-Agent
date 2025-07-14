@@ -24,7 +24,7 @@ class CircleService:
             "idempotencyKey": str(uuid.uuid4()),
             "amount": {
                 "amount": f"{usd_amount:.2f}",
-                "currency": "USD"
+                "currency": "USDC"
             },
             "settlementCurrency": "USD",
             "paymentMethods": [
@@ -45,7 +45,7 @@ class CircleService:
                 return None
 
             # Step 2: Poll for the address
-            for _ in range(10): # Poll for up to 10 seconds
+            for _ in range(30): # Poll for up to 30 seconds
                 time.sleep(1) # Wait 1 second between polls
                 address_response = requests.get(
                     f"{self.base_url}/paymentIntents/{intent_id}", headers=self.headers

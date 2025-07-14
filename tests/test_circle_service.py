@@ -72,4 +72,5 @@ def test_create_payment_intent_polling_times_out(mock_post, mock_get, mock_sleep
     result = circle_service.create_payment_intent(100)
 
     assert result is None
-    assert mock_get.call_count == 10 # Should poll 10 times 
+    assert mock_get.call_count == 30 # Should poll 30 times
+    assert mock_sleep.call_count == 30 
