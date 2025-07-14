@@ -24,7 +24,7 @@ class CircleService:
             "idempotencyKey": str(uuid.uuid4()),
             "amount": {
                 "amount": f"{usd_amount:.2f}",
-                "currency": "USDC"
+                "currency": "USD"
             },
             "settlementCurrency": "USD",
             "paymentMethods": [
