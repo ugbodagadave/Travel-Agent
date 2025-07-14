@@ -178,6 +178,9 @@ def process_message(user_id, incoming_msg, amadeus_service: AmadeusService):
             try:
                 usd_amount = currency_service.convert_to_usd(float(price_str), currency)
                 if usd_amount:
+                    # --- BEGIN DEBUG LOGGING ---
+                    print(f"Attempting to create Circle payment intent for amount: {usd_amount} USD")
+                    # --- END DEBUG LOGGING ---
                     wallet_info = circle_service.create_payment_intent(usd_amount)
                     if wallet_info:
                         wallet_id = wallet_info.get('walletId')
