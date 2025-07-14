@@ -20,30 +20,33 @@ class CircleService:
         Creates a new wallet with a unique address for a one-time payment.
         Returns the wallet address and ID, or None if an error occurs.
         """
-        idempotency_key = self._generate_idempotency_key()
-        
+        # This is a simplified wallet creation for a specific use case.
+        # In a real-world scenario, you might have more robust logic.
         payload = {
-            "idempotencyKey": idempotency_key,
-            "description": f"Flight Payment Wallet - {idempotency_key}" # Unique description
+            "description": f"Flight Payment Wallet - {uuid.uuid4()}"
         }
-        
         try:
             response = requests.post(
-                f"{self.base_url}/wallets",
-                headers=self.headers,
-                json=payload
+                f"{self.base_url}/wallets", headers=self.headers, json=payload
             )
-            response.raise_for_status() # Raise an exception for bad status codes
-            
-            data = response.json().get('data', {})
-            wallet_id = data.get('walletId')
-            address = data.get('address') # This is the address to send funds to
-            
-            if wallet_id and address:
-                return {"walletId": wallet_id, "address": address}
-            else:
-                print(f"Error: Wallet ID or Address not found in Circle response. Response: {response.json()}")
-                return None
+            response.raise_for_status()
+            wallet_data = response.json().get("data", {})
+            wallet_id = wallet_data.get("walletId")
+
+            if wallet_id:
+                # Second call to get the wallet's deposit address
+                address_response = requests.get(
+                    f"{self.base_url}/wallets/{wallet_id}/addresses", headers=self.headers
+                )
+                address_response.raise_for_status()
+                address_data = address_response.json().get("data", [])
+                
+                if address_data and "address" in address_data[0]:
+                    address = address_data[0].get("address")
+                    return {"walletId": wallet_id, "address": address}
+
+            print(f"Error: Wallet ID or Address not found in Circle response. Response: {response.json()}")
+            return None
 
         except requests.exceptions.RequestException as e:
             print(f"Error creating Circle wallet: {e}")
