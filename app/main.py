@@ -136,9 +136,9 @@ def stripe_webhook():
                 try:
                     num_tickets = len(pdf_filenames)
                     if num_tickets > 1:
-                        confirmation_text = f"Thank you for booking. I've sent {num_tickets} separate tickets for each passenger."
+                        confirmation_text = f"Thank you for booking with Flai 😊. I've sent {num_tickets} separate tickets for each passenger."
                     else:
-                        confirmation_text = f"Thank you for booking with Flai. Your flight ticket ({pdf_filenames[0]}) has been sent."
+                        confirmation_text = f"Thank you for booking with Flai 😊. Your flight ticket ({pdf_filenames[0]}) has been sent."
                     
                     if user_id.startswith('telegram:'):
                         chat_id = user_id.split(':')[1]
