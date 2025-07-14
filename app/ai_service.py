@@ -109,6 +109,39 @@ def extract_traveler_details(message: str) -> dict:
         print(f"Error extracting traveler details: {e}")
         return {}
 
+def extract_traveler_names(message: str, num_travelers: int) -> list:
+    """
+    Uses OpenAI to extract a specific number of full names from a user message.
+    """
+    prompt = f"""
+    Extract exactly {num_travelers} full names from the following user message.
+    Return a JSON object with a single key "names" containing a list of the extracted full names.
+    If you cannot find {num_travelers} names, return an empty list.
+
+    User message: "{message}"
+
+    JSON output:
+    """
+    
+    try:
+        response = client.chat.completions.create(
+            model="meta-llama/Llama-3.3-70B-Instruct",
+            messages=[
+                {"role": "system", "content": "You are a data extraction expert that always returns JSON."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0,
+            response_format={"type": "json_object"}
+        )
+        extracted_data = json.loads(response.choices[0].message.content)
+        names = extracted_data.get("names", [])
+        if isinstance(names, list) and len(names) == num_travelers:
+            return names
+        return []
+    except (json.JSONDecodeError, IndexError, Exception) as e:
+        print(f"Error extracting traveler names: {e}")
+        return []
+
 def extract_flight_details_from_history(conversation_history: list) -> dict:
     # Limit the history to the last 10 messages to keep the prompt concise
     recent_history = conversation_history[-10:]

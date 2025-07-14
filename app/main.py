@@ -103,37 +103,55 @@ def stripe_webhook():
         
         if user_id:
             # Load the session to get the flight offer that was paid for
-            state, conversation_history, flight_offers = load_session(user_id)
+            state, conversation_history, flight_offers, flight_details = load_session(user_id)
             
             if flight_offers:
                 selected_flight = flight_offers[0]
-                
-                # Get the traveler's name and create a sanitized filename
-                traveler_name = selected_flight.get('traveler_name', 'traveler')
-                pdf_filename = f"flight_ticket_{sanitize_filename(traveler_name)}.pdf"
+                traveler_names = flight_details.get("traveler_names", [])
 
-                # 1. Create the PDF
-                pdf_bytes = create_flight_itinerary(selected_flight)
+                # If no specific names were collected, fall back to the single name in the offer
+                if not traveler_names:
+                    traveler_names = [selected_flight.get('traveler_name', 'traveler')]
                 
-                # 2. Send the PDF based on the platform
+                pdf_filenames = []
+                for name in traveler_names:
+                    # Get the traveler's name and create a sanitized filename
+                    pdf_filename = f"flight_ticket_{sanitize_filename(name)}.pdf"
+                    pdf_filenames.append(pdf_filename)
+
+                    # 1. Create the PDF with the specific traveler's name
+                    pdf_bytes = create_flight_itinerary(selected_flight, traveler_name=name)
+                    
+                    # 2. Send the PDF based on the platform
+                    try:
+                        if user_id.startswith('whatsapp:'):
+                            send_whatsapp_pdf(user_id, pdf_bytes, pdf_filename)
+                        elif user_id.startswith('telegram:'):
+                            chat_id = user_id.split(':')[1]
+                            send_telegram_pdf(chat_id, pdf_bytes, pdf_filename)
+                    except Exception as e:
+                        print(f"Error sending PDF for {name} to {user_id}: {e}")
+
+                # 3. Send a final confirmation message
                 try:
-                    if user_id.startswith('whatsapp:'):
-                        send_whatsapp_pdf(user_id, pdf_bytes, pdf_filename)
-                    elif user_id.startswith('telegram:'):
-                        chat_id = user_id.split(':')[1]
-                        send_telegram_pdf(chat_id, pdf_bytes, pdf_filename)
-                        
-                    # 3. Send a confirmation message
-                    confirmation_text = f"Thank you for booking with Flai. Your flight ticket ({pdf_filename}) has been sent."
+                    num_tickets = len(pdf_filenames)
+                    if num_tickets > 1:
+                        confirmation_text = f"Thank you for booking. I've sent {num_tickets} separate tickets for each passenger."
+                    else:
+                        confirmation_text = f"Thank you for booking with Flai. Your flight ticket ({pdf_filenames[0]}) has been sent."
+                    
                     if user_id.startswith('telegram:'):
+                        chat_id = user_id.split(':')[1]
                         send_message(chat_id, confirmation_text)
+                    # Note: Sending a final summary message for WhatsApp is also a good idea.
+                    # This can be added here if needed.
 
                 except Exception as e:
                     print(f"Error in post-payment flow for {user_id}: {e}")
                 
                 # 4. Update the state
                 state = "BOOKING_CONFIRMED"
-                save_session(user_id, state, conversation_history, flight_offers)
+                save_session(user_id, state, conversation_history, flight_offers, flight_details)
             else:
                 print(f"Error: No flight offer found in session for {user_id} after payment.")
 

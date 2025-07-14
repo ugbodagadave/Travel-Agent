@@ -1,12 +1,13 @@
 from fpdf import FPDF
 from fpdf.enums import XPos, YPos
 
-def create_flight_itinerary(flight_offer):
+def create_flight_itinerary(flight_offer, traveler_name=None):
     """
     Generates a simple flight itinerary PDF from a flight offer.
     
     Args:
         flight_offer (dict): A dictionary containing the flight offer details.
+        traveler_name (str, optional): The name of the traveler for this specific ticket.
 
     Returns:
         bytes: The raw bytes of the generated PDF file.
@@ -18,6 +19,12 @@ def create_flight_itinerary(flight_offer):
     pdf.set_font("Helvetica", 'B', 16)
     pdf.cell(200, 10, "Your Flight Itinerary", new_x=XPos.LMARGIN, new_y=YPos.NEXT, align='C')
     pdf.ln(10)
+
+    # Traveler Name
+    if traveler_name:
+        pdf.set_font("Helvetica", 'B', 12)
+        pdf.cell(200, 10, f"Passenger: {traveler_name}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.ln(5)
 
     # Basic flight details
     pdf.set_font("Helvetica", '', 12)

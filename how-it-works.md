@@ -30,7 +30,7 @@ This all happens inside the `process_message` function in `app/core_logic.py`.
 
 1.  **Session Loading (`app/new_session_manager.py`):** The function immediately calls `load_session(user_id)` to fetch the user's conversation state from **Redis**. If the user is new, it creates a new session with the state `GATHERING_INFO`.
 
-2.  **AI Processing (`app/ai_service.py`):** Based on the current state, `get_ai_response` is called. It sends the conversation history to the **IO Intelligence API**, which asks clarifying questions until it has all the details (origin, destination, date, etc.). When complete, the AI returns the special tag `[INFO_COMPLETE]`.
+2.  **AI Processing (`app/ai_service.py`):** Based on the current state, `get_ai_response` is called. It sends the conversation history to the **IO Intelligence API**, which asks clarifying questions until it has all the details (origin, destination, date, travel class, etc.). When complete, the AI returns the special tag `[INFO_COMPLETE]`.
 
 3.  **State Transition & Session Saving:** The web service sees the `[INFO_COMPLETE]` tag, transitions the user's state to `AWAITING_CONFIRMATION`, and saves the updated session back to **Redis**. The confirmation summary is sent back to the user as an immediate HTTP response.
 
@@ -51,10 +51,10 @@ This is the most critical part of the architecture.
     *   Meanwhile, the `search_flights_task` function runs independently in its own thread.
 2.  **Execution:** The task's code executes:
     *   It calls the Amadeus API to get IATA codes.
-    *   It calls the Amadeus API again to perform the live flight search. This can take several seconds without affecting the main application.
+    *   It calls the Amadeus API again to perform the live flight search, passing the user's selected travel class. This can take several seconds without affecting the main application.
     *   For each flight offer returned, it makes an additional call to the Amadeus API to look up the full airline name from its `carrierCode`.
 3.  **Proactive Response:**
-    *   Once the search is complete, the background thread formats the flight offers into a user-friendly list, now including the airline name.
+    *   Once the search is complete, the background thread formats the flight offers into a user-friendly list, now including the airline name and travel class.
     *   It then connects directly to the Telegram API and sends the results as a **new, proactive message** to the user.
 4.  **Final State Update:** The thread updates the user's state in Redis to `FLIGHT_SELECTION` and saves the flight offers to their session.
 
@@ -64,7 +64,7 @@ The final part of the user journey is handled by the Stripe webhook.
 
 1.  **Payment Success:** The user successfully completes the payment on the Stripe Checkout page.
 2.  **Stripe Webhook (`app/main.py`):** Stripe sends a `checkout.session.completed` event to the `/stripe-webhook` endpoint.
-3.  **PDF Generation:** The webhook handler loads the user's session, retrieves the flight offer they paid for, and uses the `pdf_service` to generate a flight itinerary PDF.
+3.  **PDF Generation:** The webhook handler loads the user's session, retrieves the flight offer they paid for, and uses the `pdf_service` to generate a flight itinerary PDF that includes the travel class.
 4.  **Proactive Delivery:**
     *   The PDF is sent directly to the user on Telegram or WhatsApp.
     *   A final confirmation message is sent.

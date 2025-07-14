@@ -46,7 +46,7 @@ def test_search_flights_task_flights_found_telegram(mock_send_telegram, mock_twi
     MockAmadeusService.return_value = mock_amadeus_fixture
     user_id = "telegram:123456"
     flight_details = {'origin': 'London', 'destination': 'Paris', 'departure_date': '2024-10-26', 'number_of_travelers': '1'}
-    mock_load_session.return_value = ("SEARCH_IN_PROGRESS", ["history"], [])
+    mock_load_session.return_value = ("SEARCH_IN_PROGRESS", ["history"], [], {})
     
     # Run the task
     search_flights_task(user_id, flight_details)
@@ -70,6 +70,7 @@ def test_search_flights_task_flights_found_telegram(mock_send_telegram, mock_twi
     assert save_args[0] == user_id
     assert save_args[1] == "FLIGHT_SELECTION"
     assert save_args[3] is not None # offers
+    assert save_args[4] == flight_details
 
 @patch("app.tasks.AmadeusService")
 @patch("app.tasks.load_session")
@@ -86,7 +87,7 @@ def test_search_flights_task_no_flights_whatsapp(mock_send_telegram, mock_twilio
     
     user_id = "whatsapp:+15551234567"
     flight_details = {'origin': 'London', 'destination': 'Mars', 'departure_date': '2024-10-26', 'number_of_travelers': '1'}
-    mock_load_session.return_value = ("SEARCH_IN_PROGRESS", ["history"], [])
+    mock_load_session.return_value = ("SEARCH_IN_PROGRESS", ["history"], [], {})
     
     # Run the task
     search_flights_task(user_id, flight_details)
@@ -107,7 +108,8 @@ def test_search_flights_task_no_flights_whatsapp(mock_send_telegram, mock_twilio
     save_args = mock_save_session.call_args[0]
     assert save_args[0] == user_id
     assert save_args[1] == "GATHERING_INFO"
-    assert save_args[3] == [] # No offers 
+    assert save_args[3] == [] # No offers
+    assert save_args[4] == flight_details
 
 def test_search_flights_task_catastrophic_failure(mocker, mock_user_id):
     """
@@ -115,7 +117,7 @@ def test_search_flights_task_catastrophic_failure(mocker, mock_user_id):
     sends an error message, and resets the state.
     """
     # Mock dependencies
-    mocker.patch('app.tasks.load_session', return_value=("SEARCH_IN_PROGRESS", [], []))
+    mocker.patch('app.tasks.load_session', return_value=("SEARCH_IN_PROGRESS", [], [], {}))
     mocker.patch('app.tasks.AmadeusService.get_iata_code', side_effect=Exception("Major API Outage"))
     mock_send_message = mocker.patch('app.tasks.send_message')
     mock_save_session = mocker.patch('app.tasks.save_session')
@@ -129,7 +131,7 @@ def test_search_flights_task_catastrophic_failure(mocker, mock_user_id):
     mock_send_message.assert_called_with('12345', "I'm sorry, but I encountered an unexpected error while searching for flights. Please try again in a moment.")
     
     # Assert that the session was reset to GATHERING_INFO
-    mock_save_session.assert_called_with(mock_user_id, "GATHERING_INFO", [], [])
+    mock_save_session.assert_called_with(mock_user_id, "GATHERING_INFO", [], [], flight_details)
 
 @patch("app.tasks.AmadeusService")
 @patch("app.tasks.load_session")
@@ -148,7 +150,7 @@ def test_search_flights_task_attaches_traveler_name(mock_send_telegram, mock_sav
         'number_of_travelers': '1',
         'traveler_name': 'David Ugbodaga'  # The name to be attached
     }
-    mock_load_session.return_value = ("SEARCH_IN_PROGRESS", ["history"], [])
+    mock_load_session.return_value = ("SEARCH_IN_PROGRESS", ["history"], [], {})
     
     # Run the task
     search_flights_task(user_id, flight_details)
@@ -180,7 +182,7 @@ def test_search_flights_task_uses_travel_class(mock_send_telegram, mock_save_ses
         'departure_date': '2024-10-26', 
         'travel_class': 'BUSINESS'
     }
-    mock_load_session.return_value = ("SEARCH_IN_PROGRESS", ["history"], [])
+    mock_load_session.return_value = ("SEARCH_IN_PROGRESS", ["history"], [], {})
     
     # Run the task
     search_flights_task(user_id, flight_details)

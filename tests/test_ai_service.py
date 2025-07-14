@@ -1,7 +1,42 @@
 
 import pytest
 from unittest.mock import patch, MagicMock
-from app.ai_service import get_ai_response, SYSTEM_PROMPT_GATHER_INFO, SYSTEM_PROMPT_CONFIRMATION
+from app.ai_service import get_ai_response, SYSTEM_PROMPT_GATHER_INFO, SYSTEM_PROMPT_CONFIRMATION, extract_traveler_names
+import json
+
+@patch("app.ai_service.client")
+def test_extract_traveler_names(mock_openai_client):
+    """
+    Tests the extract_traveler_names function for various scenarios.
+    """
+    from app.ai_service import extract_traveler_names
+
+    # Scenario 1: Correct number of names are extracted
+    mock_response_success = MagicMock()
+    mock_response_success.choices = [MagicMock()]
+    mock_response_success.choices[0].message.content = json.dumps({"names": ["John Doe", "Jane Smith"]})
+    mock_openai_client.chat.completions.create.return_value = mock_response_success
+
+    names = extract_traveler_names("The travelers are John Doe and Jane Smith.", 2)
+    assert names == ["John Doe", "Jane Smith"]
+
+    # Scenario 2: Incorrect number of names are returned by the AI
+    mock_response_wrong_count = MagicMock()
+    mock_response_wrong_count.choices = [MagicMock()]
+    mock_response_wrong_count.choices[0].message.content = json.dumps({"names": ["John Doe"]})
+    mock_openai_client.chat.completions.create.return_value = mock_response_wrong_count
+    
+    names = extract_traveler_names("The traveler is John Doe.", 2)
+    assert names == []
+
+    # Scenario 3: Malformed JSON is returned
+    mock_response_malformed = MagicMock()
+    mock_response_malformed.choices = [MagicMock()]
+    mock_response_malformed.choices[0].message.content = '{"names": ["John Doe", "Jane Smith"]' # Malformed
+    mock_openai_client.chat.completions.create.return_value = mock_response_malformed
+
+    names = extract_traveler_names("John Doe, Jane Smith", 2)
+    assert names == []
 
 @patch("app.ai_service.client")
 def test_get_ai_response_uses_gather_info_prompt_for_new_conversation(mock_openai_client):

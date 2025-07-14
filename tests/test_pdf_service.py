@@ -38,6 +38,20 @@ def test_create_flight_itinerary_contains_travel_class(mock_flight_offer_with_cl
     assert "Class: Business" in text
     assert "Total Price: 250.00 EUR" in text
 
+def test_create_flight_itinerary_with_traveler_name(mock_flight_offer_with_class):
+    """
+    Tests that the passenger's name is correctly included in the PDF.
+    """
+    traveler_name = "John Doe"
+    pdf_bytes = create_flight_itinerary(mock_flight_offer_with_class, traveler_name=traveler_name)
+    
+    pdf_file = io.BytesIO(pdf_bytes)
+    reader = PdfReader(pdf_file)
+    page = reader.pages[0]
+    text = page.extract_text()
+    
+    assert f"Passenger: {traveler_name}" in text
+
 def test_create_flight_itinerary_no_data():
     """
     Tests that a PDF is still generated when the flight offer is None.

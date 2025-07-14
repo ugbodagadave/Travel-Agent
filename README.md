@@ -7,6 +7,7 @@ This project is an AI-powered travel agent accessible via WhatsApp and Telegram.
 - **Natural Language Understanding**: Leverages the IO Intelligence API to understand conversations, manage a state machine (e.g., `GATHERING_INFO`, `FLIGHT_SELECTION`), and extract structured data like destinations, dates, and traveler details.
 - **Live Flight Search**: Integrates with the Amadeus Self-Service API to search for real-time flight offers based on the user's criteria.
 - **Airline Name Display**: Looks up and displays the full airline name (e.g., "American Airlines") for each flight option, providing a clearer user experience.
+- **Flight Class Selection**: Users can specify their preferred travel class (e.g., Economy, Business, First Class). The application searches based on this preference and displays it in the flight options and on the final PDF ticket.
 - **Payment Processing**: Creates secure Stripe Checkout links. After a successful payment, it generates a PDF itinerary and sends it to the user.
 - **Persistent State**: Maintains conversation state for each user in a Redis database.
 - **Responsive Architecture**: Long-running tasks like flight searches are run in background threads, so the main application is never blocked.

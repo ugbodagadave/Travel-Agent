@@ -1,6 +1,6 @@
 import threading
 from app.new_session_manager import load_session, save_session
-from app.ai_service import get_ai_response, extract_flight_details_from_history, extract_traveler_details
+from app.ai_service import get_ai_response, extract_flight_details_from_history, extract_traveler_details, extract_traveler_names
 from app.amadeus_service import AmadeusService
 from app.payment_service import create_checkout_session
 from app.tasks import search_flights_task
@@ -28,7 +28,7 @@ def process_message(user_id, incoming_msg, amadeus_service: AmadeusService):
     Processes an incoming message from any platform.
     Returns a list of response messages to be sent back to the user.
     """
-    state, conversation_history, flight_offers = load_session(user_id)
+    state, conversation_history, flight_offers, flight_details = load_session(user_id)
     response_messages = []
 
     # NOTE: This is a simplified version of the logic from app/main.py's webhook.
@@ -37,18 +37,59 @@ def process_message(user_id, incoming_msg, amadeus_service: AmadeusService):
         ai_response, updated_history = get_ai_response(incoming_msg, conversation_history, state)
         
         if "[INFO_COMPLETE]" in ai_response:
-            response_messages.append(ai_response.replace("[INFO_COMPLETE]", "").strip() + "\n\nIs this information correct?")
-            state = "AWAITING_CONFIRMATION"
+            flight_details = extract_flight_details_from_history(updated_history)
+            
+            # Try to get the number of travelers, default to 1 if not found or invalid
+            try:
+                num_travelers = int(flight_details.get("number_of_travelers", 1))
+            except (ValueError, TypeError):
+                num_travelers = 1
+
+            if num_travelers > 1:
+                state = "GATHERING_NAMES"
+                response_messages.append(f"It looks like there are {num_travelers} travelers. Please provide their full names, separated by commas.")
+                save_session(user_id, state, updated_history, flight_offers, flight_details)
+            else:
+                response_messages.append(ai_response.replace("[INFO_COMPLETE]", "").strip() + "\n\nIs this information correct?")
+                state = "AWAITING_CONFIRMATION"
+                save_session(user_id, state, updated_history, flight_offers, flight_details)
         else:
             response_messages.append(ai_response)
-        
-        save_session(user_id, state, updated_history, flight_offers)
+            save_session(user_id, state, updated_history, flight_offers, flight_details)
+
+    elif state == "GATHERING_NAMES":
+        num_travelers = int(flight_details.get("number_of_travelers", 1))
+        names = extract_traveler_names(incoming_msg, num_travelers)
+
+        if names:
+            flight_details["traveler_names"] = names
+            state = "AWAITING_CONFIRMATION"
+            
+            # Create a confirmation message listing all details
+            confirmation_text = "Great, I have all the names. Please confirm the details one last time:\n"
+            # This is a simplified summary. A real app might format this more nicely.
+            for key, value in flight_details.items():
+                if key != "traveler_names":
+                    confirmation_text += f"- {key.replace('_', ' ').title()}: {value}\n"
+            
+            confirmation_text += f"- Travelers: {', '.join(names)}"
+            confirmation_text += "\n\nIs this all correct?"
+            response_messages.append(confirmation_text)
+            
+            # Save the updated details and new state
+            conversation_history.append({"role": "user", "content": incoming_msg})
+            conversation_history.append({"role": "assistant", "content": confirmation_text})
+            save_session(user_id, state, conversation_history, flight_offers, flight_details)
+        else:
+            response_messages.append(f"I'm sorry, I couldn't understand the names. Please provide exactly {num_travelers} full names, separated by commas.")
+            save_session(user_id, state, conversation_history, flight_offers, flight_details)
 
     elif state == "AWAITING_CONFIRMATION":
         ai_response, updated_history = get_ai_response(incoming_msg, conversation_history, state)
 
         if "[CONFIRMED]" in ai_response:
-            flight_details = extract_flight_details_from_history(updated_history)
+            # Re-load details from session in case this is the second confirmation
+            _, _, _, flight_details = load_session(user_id)
             
             if flight_details:
                 # Immediately respond to the user
@@ -60,33 +101,33 @@ def process_message(user_id, incoming_msg, amadeus_service: AmadeusService):
                 
                 # Update state to prevent other inputs during search
                 state = "SEARCH_IN_PROGRESS"
-                save_session(user_id, state, updated_history, [])
+                save_session(user_id, state, updated_history, [], flight_details)
             else:
                 # This should rarely happen, but it's a safe fallback.
                 response_messages.append("I seem to have lost the details. Let's start over.")
                 state = "GATHERING_INFO"
-                save_session(user_id, state, [], [])
+                save_session(user_id, state, [], [], {})
         
         elif "[INFO_COMPLETE]" in ai_response:
             # This means the user made a correction and the AI has re-confirmed.
             response_messages.append(ai_response.replace("[INFO_COMPLETE]", "").strip() + "\n\nIs this information correct?")
             state = "AWAITING_CONFIRMATION" # Stay in this state
-            save_session(user_id, state, updated_history, [])
+            save_session(user_id, state, updated_history, [], flight_details)
 
         else:
             # Fallback for unexpected AI responses
             response_messages.append(ai_response)
-            save_session(user_id, state, updated_history, flight_offers)
+            save_session(user_id, state, updated_history, flight_offers, flight_details)
 
     elif state == "SEARCH_IN_PROGRESS":
         response_messages.append("I'm still looking for flights for you. I'll send them over as soon as they're ready.")
-        save_session(user_id, state, conversation_history, flight_offers)
+        save_session(user_id, state, conversation_history, flight_offers, flight_details)
 
     elif state == "FLIGHT_SELECTION":
         if "no" in incoming_msg.lower():
             response_messages.append("Okay, let's start over. Where would you like to go?")
             state = "GATHERING_INFO"
-            save_session(user_id, state, [], [])
+            save_session(user_id, state, [], [], {})
         else:
             try:
                 selection = int(incoming_msg.strip())
@@ -98,21 +139,21 @@ def process_message(user_id, incoming_msg, amadeus_service: AmadeusService):
                         response_messages.append(f"Great! Please complete your payment using this secure link: {checkout_url}")
                         state = "AWAITING_PAYMENT"
                         # Save the selected flight in the session for the webhook
-                        save_session(user_id, state, conversation_history, [selected_flight])
+                        save_session(user_id, state, conversation_history, [selected_flight], flight_details)
                     else:
                         response_messages.append("I'm sorry, I couldn't create a payment link. Please try again.")
-                        save_session(user_id, state, conversation_history, flight_offers)
+                        save_session(user_id, state, conversation_history, flight_offers, flight_details)
                 else:
                     response_messages.append("Invalid selection. Please choose a number from the list.")
-                    save_session(user_id, state, conversation_history, flight_offers)
+                    save_session(user_id, state, conversation_history, flight_offers, flight_details)
             except (ValueError, IndexError):
                 response_messages.append("I didn't understand. Please reply with the flight number.")
-                save_session(user_id, state, conversation_history, flight_offers)
+                save_session(user_id, state, conversation_history, flight_offers, flight_details)
 
     else:
         # Default fallback for unhandled states
         response_messages.append("I'm not sure how to handle that right now. Let's start over. Where would you like to go?")
         state = "GATHERING_INFO"
-        save_session(user_id, state, [], [])
+        save_session(user_id, state, [], [], {})
 
     return response_messages 

@@ -7,14 +7,15 @@ import redis
 redis_client = redis.from_url(os.getenv("REDIS_URL"), decode_responses=True)
 SESSION_EXPIRATION = 86400 # 24 hours in seconds
 
-def save_session(session_id, state, conversation_history, flight_offers=None):
+def save_session(session_id, state, conversation_history, flight_offers=None, flight_details=None):
     """
     Saves the session data to Redis.
     """
     session_data = {
         "state": state,
         "conversation_history": conversation_history,
-        "flight_offers": flight_offers or []
+        "flight_offers": flight_offers or [],
+        "flight_details": flight_details or {}
     }
     
     # Save to Redis
@@ -35,9 +36,10 @@ def load_session(session_id):
             state = session_data.get("state", "GATHERING_INFO")
             history = session_data.get("conversation_history", [])
             offers = session_data.get("flight_offers", [])
-            return state, history, offers
+            details = session_data.get("flight_details", {})
+            return state, history, offers, details
     except redis.exceptions.RedisError as e:
         print(f"Error loading session from Redis: {e}")
         
     # 2. If not in Redis, return a new session.
-    return "GATHERING_INFO", [], [] 
+    return "GATHERING_INFO", [], [], {} 

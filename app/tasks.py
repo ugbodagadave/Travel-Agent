@@ -34,7 +34,7 @@ def search_flights_task(user_id, flight_details):
 
     print(f"[{user_id}] - INFO: All environment variables seem to be present.")
 
-    _, conversation_history, _ = load_session(user_id)
+    _, conversation_history, _, _ = load_session(user_id)
     print(f"[{user_id}] - INFO: Session loaded successfully.")
 
     try:
@@ -115,5 +115,5 @@ def search_flights_task(user_id, flight_details):
         print(f"[{user_id}] - CRITICAL: Failed to send proactive message from task: {e}")
 
     # Update the user's session with the new state and offers
-    save_session(user_id, next_state, conversation_history, offers)
+    save_session(user_id, next_state, conversation_history, offers, flight_details)
     print(f"[{user_id}] - INFO: Session saved with new state '{next_state}'. Task finished.") 
