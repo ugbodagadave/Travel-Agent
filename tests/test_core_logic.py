@@ -249,7 +249,7 @@ def test_awaiting_payment_selection_usdc(mock_save_wallet, mock_circle, mock_cur
     mock_load_session.return_value = ("AWAITING_PAYMENT_SELECTION", ["history"], selected_flight, flight_details)
     
     mock_currency.convert_to_usd.return_value = 130.00
-    mock_circle.create_payment_wallet.return_value = {"walletId": "mock-wallet-id", "address": "mock-usdc-address"}
+    mock_circle.create_payment_intent.return_value = {"walletId": "mock-wallet-id", "address": "mock-usdc-address"}
 
     response = process_message(user_id, "USDC", MagicMock())
 
@@ -257,7 +257,7 @@ def test_awaiting_payment_selection_usdc(mock_save_wallet, mock_circle, mock_cur
     assert "`mock-usdc-address`" in response[0]
     
     mock_currency.convert_to_usd.assert_called_once_with(120.50, 'EUR')
-    mock_circle.create_payment_wallet.assert_called_once()
+    mock_circle.create_payment_intent.assert_called_once_with(130.00)
     mock_save_wallet.assert_called_once_with("mock-wallet-id", user_id)
     
     # Check that the session is saved with the new state and updated details

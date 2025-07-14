@@ -1,60 +1,71 @@
 import os
 import requests
 import uuid
+import time
 
 class CircleService:
+    """
+    Service for interacting with the Circle API using the Payment Intents flow.
+    """
     def __init__(self):
-        self.api_key = os.getenv("CIRCLE_API_KEY")
+        self.api_key = os.environ.get("CIRCLE_API_KEY")
         self.base_url = "https://api-sandbox.circle.com/v1"
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
 
-    def _generate_idempotency_key(self):
-        """Generates a unique idempotency key for each request."""
-        return str(uuid.uuid4())
-
-    def create_payment_wallet(self):
-        """Creates a new wallet for a single payment."""
-        # This is a simplified wallet creation for a specific use case.
-        # In a real-world scenario, you might have more robust logic.
-        payload = {
+    def create_payment_intent(self, usd_amount):
+        """
+        Creates a new payment intent and polls for the deposit address.
+        """
+        # Step 1: Create the Payment Intent
+        intent_payload = {
             "idempotencyKey": str(uuid.uuid4()),
-            "description": "Flight Payment Wallet"
+            "amount": {
+                "amount": f"{usd_amount:.2f}",
+                "currency": "USD"
+            },
+            "settlementCurrency": "USD",
+            "paymentMethods": [
+                {"type": "blockchain", "chain": "ETH"} # Use ETH for Sepolia sandbox
+            ]
         }
+        
         try:
-            response = requests.post(
-                f"{self.base_url}/wallets", headers=self.headers, json=payload
+            intent_response = requests.post(
+                f"{self.base_url}/paymentIntents", headers=self.headers, json=intent_payload
             )
-            response.raise_for_status()
-            wallet_data = response.json().get("data", {})
-            wallet_id = wallet_data.get("walletId")
+            intent_response.raise_for_status()
+            intent_data = intent_response.json().get("data", {})
+            intent_id = intent_data.get("id")
 
-            if wallet_id:
-                # Second call to generate a deposit address for the new wallet
-                address_payload = {
-                    "idempotencyKey": str(uuid.uuid4()),
-                    "currency": "USDC",
-                    "chain": "ETH-SEPOLIA"
-                }
-                address_response = requests.post(
-                    f"{self.base_url}/wallets/{wallet_id}/addresses", 
-                    headers=self.headers,
-                    json=address_payload
+            if not intent_id:
+                print("Failed to create payment intent: ID missing from response.")
+                return None
+
+            # Step 2: Poll for the address
+            for _ in range(10): # Poll for up to 10 seconds
+                time.sleep(1) # Wait 1 second between polls
+                address_response = requests.get(
+                    f"{self.base_url}/paymentIntents/{intent_id}", headers=self.headers
                 )
                 address_response.raise_for_status()
                 address_data = address_response.json().get("data", {})
                 
-                if address_data and "address" in address_data:
-                    address = address_data.get("address")
-                    return {"walletId": wallet_id, "address": address}
+                payment_method = address_data.get("paymentMethods", [{}])[0]
+                address = payment_method.get("address")
 
-            print(f"Error: Wallet ID or Address not found in Circle response. Response: {response.json()}")
+                if address:
+                    print(f"Successfully retrieved address for intent {intent_id}")
+                    # The webhook needs the intent_id to find the user
+                    return {"walletId": intent_id, "address": address}
+            
+            print(f"Polling timed out for intent {intent_id}. Address not found.")
             return None
 
         except requests.exceptions.RequestException as e:
-            print(f"Error creating Circle wallet: {e}")
+            print(f"Error in Circle payment intent flow: {e}")
             if e.response:
                 print(f"Response Body: {e.response.text}")
             return None 

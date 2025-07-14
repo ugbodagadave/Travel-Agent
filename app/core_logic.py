@@ -178,7 +178,7 @@ def process_message(user_id, incoming_msg, amadeus_service: AmadeusService):
             try:
                 usd_amount = currency_service.convert_to_usd(float(price_str), currency)
                 if usd_amount:
-                    wallet_info = circle_service.create_payment_wallet()
+                    wallet_info = circle_service.create_payment_intent(usd_amount)
                     if wallet_info:
                         wallet_id = wallet_info.get('walletId')
                         wallet_address = wallet_info.get('address')
