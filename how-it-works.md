@@ -32,13 +32,23 @@ This all happens inside the `process_message` function in `app/core_logic.py`.
 
 2.  **AI Processing (`app/ai_service.py`):** Based on the current state, `get_ai_response` is called. It sends the conversation history to the **IO Intelligence API**, which asks clarifying questions until it has all the details (origin, destination, date, travel class, etc.). When complete, the AI returns the special tag `[INFO_COMPLETE]`.
 
-3.  **State Transition & Session Saving:** The web service sees the `[INFO_COMPLETE]` tag, transitions the user's state to `AWAITING_CONFIRMATION`, and saves the updated session back to **Redis**. The confirmation summary is sent back to the user as an immediate HTTP response.
+3.  **Check for Multiple Travelers:** The application sees the `[INFO_COMPLETE]` tag and immediately extracts the structured flight details, including the `number_of_travelers`.
+    *   **If there is only one traveler,** the flow continues to the next step as usual.
+    *   **If there are multiple travelers,** the system transitions to a new state: `GATHERING_NAMES`. It saves the session and asks the user to provide the full names of all travelers.
+
+#### Step 2a: Collecting Traveler Names (New)
+
+This step only occurs if there is more than one traveler.
+
+1.  **User Provides Names:** The user replies with the names, typically in a single message (e.g., "David Ugbodaga, Esther Ugbodaga").
+2.  **Name Extraction (`app/ai_service.py`):** The `extract_traveler_names` function is called. It uses another AI prompt to parse the user's message and pull out the exact number of names required.
+3.  **State Transition & Session Saving:** Once the names are successfully extracted, they are added to the session's `flight_details`. The state is transitioned to `AWAITING_CONFIRMATION`, and the session is saved to Redis. A confirmation message is sent to the user, now listing all extracted traveler names along with the other flight details.
 
 #### Step 3: The Asynchronous Handoff (The Background Thread)
 
 This is the most critical part of the architecture.
 
-1.  **User Confirms:** The user replies "Yes". The web service receives this message.
+1.  **User Confirms:** The user replies "Yes" to the confirmation message (which now includes all traveler names). The web service receives this message.
 2.  **Task Dispatching (`app/core_logic.py`):**
     *   The `process_message` function loads the session and sees the state is `AWAITING_CONFIRMATION`.
     *   It immediately sends the user the message "Okay, I'm searching for the best flights..."
@@ -64,11 +74,12 @@ The final part of the user journey is handled by the Stripe webhook.
 
 1.  **Payment Success:** The user successfully completes the payment on the Stripe Checkout page.
 2.  **Stripe Webhook (`app/main.py`):** Stripe sends a `checkout.session.completed` event to the `/stripe-webhook` endpoint.
-3.  **PDF Generation:** The webhook handler loads the user's session, retrieves the flight offer they paid for, and uses the `pdf_service` to generate a flight itinerary PDF that includes the travel class.
-4.  **Proactive Delivery:**
-    *   The PDF is sent directly to the user on Telegram or WhatsApp.
-    *   A final confirmation message is sent.
-    *   The user's state is updated to `BOOKING_CONFIRMED`.
+3.  **PDF Generation Loop:** The webhook handler loads the user's session, which now contains the list of traveler names. It then loops through this list. For each name, it:
+    *   Retrieves the flight offer they paid for.
+    *   Calls the `pdf_service` to generate a flight itinerary PDF, passing the specific traveler's name to be included on the ticket.
+    *   Sends the newly generated, personalized PDF directly to the user on Telegram or WhatsApp.
+4.  **Final Confirmation:** After all individual tickets have been sent, a single confirmation message is sent (e.g., "Thank you for booking with Flai 😊. I've sent 2 separate tickets for each passenger.").
+5.  **State Update:** The user's state is updated to `BOOKING_CONFIRMED`.
 
 ---
 

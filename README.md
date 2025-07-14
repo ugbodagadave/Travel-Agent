@@ -8,6 +8,7 @@ This project is an AI-powered travel agent accessible via WhatsApp and Telegram.
 - **Live Flight Search**: Integrates with the Amadeus Self-Service API to search for real-time flight offers based on the user's criteria.
 - **Airline Name Display**: Looks up and displays the full airline name (e.g., "American Airlines") for each flight option, providing a clearer user experience.
 - **Flight Class Selection**: Users can specify their preferred travel class (e.g., Economy, Business, First Class). The application searches based on this preference and displays it in the flight options and on the final PDF ticket.
+- **Multi-Traveler Booking**: If a booking is for more than one person, the agent collects the full names of all travelers. After payment, it generates and delivers a separate, personalized PDF ticket for each individual.
 - **Payment Processing**: Creates secure Stripe Checkout links. After a successful payment, it generates a PDF itinerary and sends it to the user.
 - **Persistent State**: Maintains conversation state for each user in a Redis database.
 - **Responsive Architecture**: Long-running tasks like flight searches are run in background threads, so the main application is never blocked.
@@ -48,7 +49,7 @@ This project is an AI-powered travel agent accessible via WhatsApp and Telegram.
 
 This application runs as a **single web service** on Render.
 
-It's a Flask application that handles incoming webhooks from Twilio and Telegram. To ensure the service is always responsive, it processes messages, manages conversation state, and runs long-running tasks in background threads. After a user completes a payment via a Stripe webhook, the application generates a PDF of the flight itinerary and sends it back to the user on their messaging platform. User session data is stored in a connected Render Redis instance.
+It's a Flask application that handles incoming webhooks from Twilio and Telegram. To ensure the service is always responsive, it processes messages, manages conversation state (including a new state for gathering traveler names), and runs long-running tasks in background threads. After a user completes a payment via a Stripe webhook, the application generates a personalized PDF of the flight itinerary for each traveler and sends it back to the user on their messaging platform. User session data is stored in a connected Render Redis instance.
 
 This single-service, multi-threaded architecture simplifies deployment while maintaining a great user experience.
 
