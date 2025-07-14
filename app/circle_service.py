@@ -32,15 +32,22 @@ class CircleService:
             wallet_id = wallet_data.get("walletId")
 
             if wallet_id:
-                # Second call to get the wallet's deposit address
-                address_response = requests.get(
-                    f"{self.base_url}/wallets/{wallet_id}/addresses", headers=self.headers
+                # Second call to generate a deposit address for the new wallet
+                address_payload = {
+                    "idempotencyKey": str(uuid.uuid4()),
+                    "currency": "USD",
+                    "chain": "ETH-SEPOLIA"
+                }
+                address_response = requests.post(
+                    f"{self.base_url}/wallets/{wallet_id}/addresses", 
+                    headers=self.headers,
+                    json=address_payload
                 )
                 address_response.raise_for_status()
-                address_data = address_response.json().get("data", [])
+                address_data = address_response.json().get("data", {})
                 
-                if address_data and "address" in address_data[0]:
-                    address = address_data[0].get("address")
+                if address_data and "address" in address_data:
+                    address = address_data.get("address")
                     return {"walletId": wallet_id, "address": address}
 
             print(f"Error: Wallet ID or Address not found in Circle response. Response: {response.json()}")
