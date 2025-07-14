@@ -68,18 +68,53 @@ This is the most critical part of the architecture.
     *   It then connects directly to the Telegram API and sends the results as a **new, proactive message** to the user.
 4.  **Final State Update:** The thread updates the user's state in Redis to `FLIGHT_SELECTION` and saves the flight offers to their session.
 
-#### Step 5: Payment Confirmation and Itinerary Delivery
+#### Step 5: Payment and Itinerary Delivery
 
-The final part of the user journey is handled by the Stripe webhook.
+This is the final part of the journey, which now offers two distinct paths: traditional card payment (Stripe) and cryptocurrency (USDC).
 
-1.  **Payment Success:** The user successfully completes the payment on the Stripe Checkout page.
-2.  **Stripe Webhook (`app/main.py`):** Stripe sends a `checkout.session.completed` event to the `/stripe-webhook` endpoint.
-3.  **PDF Generation Loop:** The webhook handler loads the user's session, which now contains the list of traveler names. It then loops through this list. For each name, it:
+1.  **User Selects Flight:** The user receives the list of flights and replies with the number of their choice (e.g., "1").
+
+2.  **Payment Method Selection (`app/core_logic.py`):**
+    *   The system transitions the user's state to `AWAITING_PAYMENT_SELECTION`.
+    *   It sends the message: "You've selected a great flight. How would you like to pay? (Reply with 'Card' or 'USDC')"
+
+---
+##### Path A: Paying with a Card (Stripe)
+
+1.  **User Selects Card:** The user replies "Card".
+2.  **Stripe Checkout (`app/payment_service.py`):** The system calls `create_checkout_session`, which generates a secure, unique payment link from the **Stripe API**.
+3.  **User Pays:** The user is sent the Stripe link, completes the payment, and Stripe sends a `checkout.session.completed` event to the `/stripe-webhook`.
+
+---
+##### Path B: Paying with USDC (Circle)
+
+1.  **User Selects USDC:** The user replies "USDC".
+2.  **Currency Conversion (`app/currency_service.py`):** The system first checks the flight's currency. If it's not already in USD, it makes a live API call to a currency conversion service to get the exact price in USD.
+3.  **Wallet Generation (`app/circle_service.py`):**
+    *   The application calls the **Circle API** to create a new, unique blockchain wallet address for this specific transaction.
+    *   It saves a mapping of this new `walletId` to the `user_id` in Redis. This is critical for identifying the user when the payment confirmation arrives.
+4.  **User Pays:** The user is sent the wallet address and the exact USD amount to pay (e.g., `130.55 USDC`). They complete the transfer from their own wallet.
+
+---
+#### Step 6: Confirmation via Webhook
+
+The final confirmation step is handled by the appropriate webhook, depending on the payment method chosen.
+
+##### Stripe Webhook (`/stripe-webhook` in `app/main.py`)
+
+1.  **Payment Success:** Stripe sends a `checkout.session.completed` event.
+2.  **PDF Generation Loop:** The handler loads the user's session, which contains the list of traveler names. It then loops through this list. For each name, it:
     *   Retrieves the flight offer they paid for.
-    *   Calls the `pdf_service` to generate a flight itinerary PDF, passing the specific traveler's name to be included on the ticket.
-    *   Sends the newly generated, personalized PDF directly to the user on Telegram or WhatsApp.
-4.  **Final Confirmation:** After all individual tickets have been sent, a single confirmation message is sent (e.g., "Thank you for booking with Flai 😊. I've sent 2 separate tickets for each passenger.").
-5.  **State Update:** The user's state is updated to `BOOKING_CONFIRMED`.
+    *   Calls the `pdf_service` to generate a flight itinerary PDF, passing the specific traveler's name.
+    *   Sends the newly generated, personalized PDF directly to the user.
+3.  **Final Confirmation:** After all tickets are sent, a single confirmation message is sent (e.g., "Thank you... I've sent 2 separate tickets.").
+4.  **State Update:** The user's state is updated to `BOOKING_CONFIRMED`.
+
+##### Circle Webhook (`/circle-webhook` in `app/main.py`)
+
+1.  **Payment Success:** Once the USDC transaction is confirmed on the blockchain, Circle sends a `wallets.deposits.completed` event.
+2.  **User Lookup:** The webhook extracts the `walletId` from the payload and uses it to load the correct `user_id` from the Redis mapping created earlier.
+3.  **PDF Generation & Final Steps:** From here, the process is identical to the Stripe flow. The handler loads the session, generates and sends a personalized PDF for each traveler, sends a final confirmation message, and updates the user's state to `BOOKING_CONFIRMED`.
 
 ---
 
@@ -108,7 +143,7 @@ This approach ensures that files are persisted reliably and can be accessed from
 *   **Messaging Platforms:** **Twilio** for WhatsApp, **Telegram Bot API** for Telegram.
 *   **Natural Language Understanding:** **IO Intelligence API**.
 *   **Flight Data & Booking:** **Amadeus**.
-*   **Payments:** **Stripe**.
+*   **Payments:** **Stripe**, **Circle**.
 *   **Session Storage:** **Redis** is the backbone of the system, used for storing conversation state.
 *   **Testing:** **Pytest**.
 *   **Hosting:** **Render**. 

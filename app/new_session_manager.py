@@ -6,6 +6,23 @@ import redis
 # It's recommended to use a connection pool in a real application
 redis_client = redis.from_url(os.getenv("REDIS_URL"), decode_responses=True)
 SESSION_EXPIRATION = 86400 # 24 hours in seconds
+WALLET_ID_PREFIX = "wallet_id:"
+WALLET_ID_EXPIRATION = 86400 # 24 hours
+
+def save_wallet_mapping(wallet_id, user_id):
+    """Saves the mapping from a Circle wallet ID to a user ID in Redis."""
+    try:
+        redis_client.setex(f"{WALLET_ID_PREFIX}{wallet_id}", WALLET_ID_EXPIRATION, user_id)
+    except Exception as e:
+        print(f"Error saving wallet mapping to Redis: {e}")
+
+def load_user_id_from_wallet(wallet_id):
+    """Loads a user ID from Redis using the Circle wallet ID."""
+    try:
+        return redis_client.get(f"{WALLET_ID_PREFIX}{wallet_id}")
+    except Exception as e:
+        print(f"Error loading user ID from wallet mapping in Redis: {e}")
+        return None
 
 def save_session(session_id, state, conversation_history, flight_offers=None, flight_details=None):
     """

@@ -132,8 +132,7 @@ def test_process_message_search_in_progress(mock_save_session, mock_load_session
 @patch("app.core_logic.create_checkout_session")
 def test_flight_selection_creates_payment_link(mock_create_checkout, mock_save_session, mock_load_session):
     """
-    Tests that a valid flight selection transitions to the AWAITING_PAYMENT state
-    and generates a Stripe checkout link.
+    Tests that a valid flight selection transitions to the AWAITING_PAYMENT_SELECTION state.
     """
     user_id = "test_user_selecting"
     flight_offers = [
@@ -141,19 +140,18 @@ def test_flight_selection_creates_payment_link(mock_create_checkout, mock_save_s
         {'id': 'flight2', 'traveler_name': 'David Ugbodaga'}
     ]
     mock_load_session.return_value = ("FLIGHT_SELECTION", ["history"], flight_offers, {})
-    mock_create_checkout.return_value = "https://checkout.stripe.com/mock_url"
 
     response = process_message(user_id, "1", MagicMock())
 
-    # Check that the checkout session was created with the correct flight
-    mock_create_checkout.assert_called_once_with(flight_offers[0], user_id)
+    # Check that create_checkout_session is NOT called
+    mock_create_checkout.assert_not_called()
     
     # Check for the correct user response
-    assert "Great! Please complete your payment" in response[0]
-    assert "https://checkout.stripe.com/mock_url" in response[0]
+    assert "You've selected a great flight" in response[0]
+    assert "How would you like to pay?" in response[0]
     
-    # Check that the session was updated correctly
-    mock_save_session.assert_called_once_with(user_id, "AWAITING_PAYMENT", ["history"], [flight_offers[0]], {})
+    # Check that the session was updated correctly to the new state
+    mock_save_session.assert_called_once_with(user_id, "AWAITING_PAYMENT_SELECTION", ["history"], [flight_offers[0]], {})
 
 @patch("app.core_logic.load_session")
 @patch("app.core_logic.save_session")
@@ -216,3 +214,68 @@ def test_process_message_handles_incorrect_name_count(mock_extract_names, mock_s
 
     assert "provide exactly 3 full names" in response[0]
     mock_save_session.assert_called_with("user1", "GATHERING_NAMES", ["history"], [], flight_details) 
+
+@patch("app.core_logic.load_session")
+@patch("app.core_logic.save_session")
+@patch("app.core_logic.create_checkout_session")
+def test_awaiting_payment_selection_card(mock_create_checkout, mock_save_session, mock_load_session):
+    """
+    Tests the 'Card' payment path from AWAITING_PAYMENT_SELECTION.
+    """
+    user_id = "test_user_card"
+    selected_flight = [{'id': 'flight1', 'price': {'total': '100', 'currency': 'USD'}}]
+    mock_load_session.return_value = ("AWAITING_PAYMENT_SELECTION", ["history"], selected_flight, {})
+    mock_create_checkout.return_value = "http://mock.stripe.url"
+
+    response = process_message(user_id, "Card", MagicMock())
+
+    assert "Great! Please complete your payment" in response[0]
+    assert "http://mock.stripe.url" in response[0]
+    mock_create_checkout.assert_called_once_with(selected_flight[0], user_id)
+    mock_save_session.assert_called_once_with(user_id, "AWAITING_PAYMENT", ["history"], selected_flight, {})
+
+@patch("app.core_logic.load_session")
+@patch("app.core_logic.save_session")
+@patch("app.core_logic.currency_service")
+@patch("app.core_logic.circle_service")
+@patch("app.core_logic.save_wallet_mapping")
+def test_awaiting_payment_selection_usdc(mock_save_wallet, mock_circle, mock_currency, mock_save_session, mock_load_session):
+    """
+    Tests the 'USDC' payment path from AWAITING_PAYMENT_SELECTION.
+    """
+    user_id = "test_user_usdc"
+    selected_flight = [{'id': 'flight1', 'price': {'total': '120.50', 'currency': 'EUR'}}]
+    flight_details = {"some_detail": "value"}
+    mock_load_session.return_value = ("AWAITING_PAYMENT_SELECTION", ["history"], selected_flight, flight_details)
+    
+    mock_currency.convert_to_usd.return_value = 130.00
+    mock_circle.create_payment_wallet.return_value = {"walletId": "mock-wallet-id", "address": "mock-usdc-address"}
+
+    response = process_message(user_id, "USDC", MagicMock())
+
+    assert "To pay with USDC, please send exactly 130.00 USDC" in response[0]
+    assert "`mock-usdc-address`" in response[0]
+    
+    mock_currency.convert_to_usd.assert_called_once_with(120.50, 'EUR')
+    mock_circle.create_payment_wallet.assert_called_once()
+    mock_save_wallet.assert_called_once_with("mock-wallet-id", user_id)
+    
+    # Check that the session is saved with the new state and updated details
+    updated_flight_details = flight_details.copy()
+    updated_flight_details['expected_usd_amount'] = 130.00
+    mock_save_session.assert_called_once_with(user_id, "AWAITING_USDC_PAYMENT", ["history"], selected_flight, updated_flight_details)
+
+@patch("app.core_logic.load_session")
+@patch("app.core_logic.save_session")
+def test_awaiting_payment_selection_invalid(mock_save_session, mock_load_session):
+    """
+    Tests an invalid input in the AWAITING_PAYMENT_SELECTION state.
+    """
+    user_id = "test_user_invalid"
+    selected_flight = [{'id': 'flight1'}]
+    mock_load_session.return_value = ("AWAITING_PAYMENT_SELECTION", ["history"], selected_flight, {})
+
+    response = process_message(user_id, "Bitcoin", MagicMock())
+
+    assert "I didn't understand. Please reply with 'Card' or 'USDC'." in response[0]
+    mock_save_session.assert_called_once_with(user_id, "AWAITING_PAYMENT_SELECTION", ["history"], selected_flight, {}) 

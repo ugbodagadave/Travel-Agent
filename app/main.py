@@ -8,7 +8,7 @@ import uuid
 from app.amadeus_service import AmadeusService
 from app.telegram_service import send_message, send_pdf as send_telegram_pdf
 from app.core_logic import process_message
-from app.new_session_manager import load_session, save_session
+from app.new_session_manager import load_session, save_session, load_user_id_from_wallet
 from app.pdf_service import create_flight_itinerary
 from app.utils import sanitize_filename
 
@@ -155,6 +155,83 @@ def stripe_webhook():
             else:
                 print(f"Error: No flight offer found in session for {user_id} after payment.")
 
+    return 'OK', 200
+
+@app.route("/circle-webhook", methods=['POST'])
+def circle_webhook():
+    data = request.get_json()
+
+    # Basic validation to ensure we have data and it's a notification
+    if not data or "notification" not in data:
+        return 'Invalid request', 400
+
+    notification = data.get('notification', {})
+    if notification.get('type') != 'wallets.deposits.completed':
+        # We only care about completed deposits
+        return 'Notification type not handled', 200
+
+    deposit = notification.get('deposit', {})
+    wallet_id = deposit.get('walletId')
+    amount_data = deposit.get('amount', {})
+    
+    if not wallet_id or not amount_data:
+        return 'Missing walletId or amount data', 400
+
+    # Retrieve user_id from our Redis mapping
+    user_id = load_user_id_from_wallet(wallet_id)
+    if not user_id:
+        print(f"Could not find user_id for wallet_id: {wallet_id}")
+        return 'User not found for wallet', 404
+
+    # Load the user's full session
+    state, conversation_history, flight_offers, flight_details = load_session(user_id)
+    if not flight_offers:
+        print(f"Error: No flight offer found in session for {user_id} after USDC payment.")
+        return 'Flight offer not found', 404
+
+    # TODO: In a real app, you would verify the USDC amount received
+    # against the expected amount saved in the session.
+    # For now, we'll assume the payment is correct.
+
+    selected_flight = flight_offers[0]
+    traveler_names = flight_details.get("traveler_names", [])
+    if not traveler_names:
+        traveler_names = [selected_flight.get('traveler_name', 'traveler')]
+
+    for name in traveler_names:
+        pdf_filename = f"flight_ticket_{sanitize_filename(name)}.pdf"
+        pdf_bytes = create_flight_itinerary(selected_flight, traveler_name=name)
+        
+        try:
+            if user_id.startswith('whatsapp:'):
+                send_whatsapp_pdf(user_id, pdf_bytes, pdf_filename)
+            elif user_id.startswith('telegram:'):
+                chat_id = user_id.split(':')[1]
+                send_telegram_pdf(chat_id, pdf_bytes, pdf_filename)
+        except Exception as e:
+            print(f"Error sending PDF for {name} to {user_id}: {e}")
+
+    # Final confirmation message
+    try:
+        num_tickets = len(traveler_names)
+        if num_tickets > 1:
+            confirmation_text = f"Thank you for booking with Flai 😊. I've sent {num_tickets} separate tickets for each passenger."
+        else:
+            confirmation_text = f"Thank you for booking with Flai 😊. Your flight ticket ({pdf_filename}) has been sent."
+        
+        if user_id.startswith('telegram:'):
+            chat_id = user_id.split(':')[1]
+            send_message(chat_id, confirmation_text)
+        # Note: Sending a final summary message for WhatsApp is also a good idea.
+        # This can be added here if needed.
+
+    except Exception as e:
+        print(f"Error in post-payment flow for {user_id}: {e}")
+
+    # Update state and save session
+    state = "BOOKING_CONFIRMED"
+    save_session(user_id, state, conversation_history, flight_offers, flight_details)
+    
     return 'OK', 200
 
 @app.route("/files/<filename>")

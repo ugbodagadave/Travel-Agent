@@ -102,7 +102,7 @@ def test_stripe_webhook_sends_multiple_pdfs_for_multiple_travelers(mock_send_tex
     mock_send_pdf.assert_any_call('456', b'pdf-content', 'flight_ticket_John_Smith.pdf')
 
     # Assert that the final confirmation message is for multiple tickets
-    expected_text = "Thank you for booking. I've sent 2 separate tickets for each passenger."
+    expected_text = "Thank you for booking with Flai 😊. I've sent 2 separate tickets for each passenger."
     mock_send_text.assert_called_with('456', expected_text)
 
 

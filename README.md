@@ -9,8 +9,10 @@ This project is an AI-powered travel agent accessible via WhatsApp and Telegram.
 - **Airline Name Display**: Looks up and displays the full airline name (e.g., "American Airlines") for each flight option, providing a clearer user experience.
 - **Flight Class Selection**: Users can specify their preferred travel class (e.g., Economy, Business, First Class). The application searches based on this preference and displays it in the flight options and on the final PDF ticket.
 - **Multi-Traveler Booking**: If a booking is for more than one person, the agent collects the full names of all travelers. After payment, it generates and delivers a separate, personalized PDF ticket for each individual.
-- **Payment Processing**: Creates secure Stripe Checkout links. After a successful payment, it generates a PDF itinerary and sends it to the user.
-- **Persistent State**: Maintains conversation state for each user in a Redis database.
+- **Dual Payment Options**:
+  - **Stripe**: Creates secure Stripe Checkout links for traditional card payments.
+  - **USDC**: Integrates with the Circle API to allow payments with USDC. The system handles currency conversion and generates unique payment addresses for each transaction.
+- **Persistent State**: Maintains conversation state for each user in a Redis database, including mappings for USDC payment tracking.
 - **Responsive Architecture**: Long-running tasks like flight searches are run in background threads, so the main application is never blocked.
 
 ## Core Technologies
@@ -31,6 +33,8 @@ This project is an AI-powered travel agent accessible via WhatsApp and Telegram.
 │   ├── core_logic.py         # Platform-agnostic core conversation logic
 │   ├── ai_service.py         # Handles all IO Intelligence API interactions
 │   ├── amadeus_service.py    # Handles all Amadeus API interactions
+│   ├── circle_service.py     # Manages Circle API for USDC payments
+│   ├── currency_service.py   # Handles real-time currency conversion
 │   ├── payment_service.py    # Handles all Stripe API interactions
 │   ├── telegram_service.py   # Handles sending messages to Telegram
 │   ├── new_session_manager.py# Manages user session state in Redis
@@ -97,6 +101,9 @@ For a detailed, technical deep-dive (including production considerations), see `
     AMADEUS_CLIENT_ID=
     AMADEUS_CLIENT_SECRET=
 
+    # Circle API Key (for USDC Payments)
+    CIRCLE_API_KEY=
+
     # Stripe API Keys
     STRIPE_PUBLISHABLE_KEY=
     STRIPE_SECRET_KEY=
@@ -116,6 +123,7 @@ For a detailed, technical deep-dive (including production considerations), see `
     - **Telegram**: Create a new bot by talking to the `@BotFather` on Telegram. It will give you a `Bot Token`.
     - **IO Intelligence**: Create an account on the IO Intelligence platform and generate an API key.
     - **Amadeus**: Register for a Self-Service account on the Amadeus for Developers portal to get your `Client ID` and `Client Secret`.
+    - **Circle**: Sign up for a Circle developer account and get your API key from the dashboard.
     - **Stripe**: Sign up for a Stripe account and find your `Publishable Key`, `Secret Key`, and `Webhook Secret` in the Developers dashboard.
     - **Redis**: For local development, you need to run a Redis server. On Render, the `REDIS_URL` is automatically provided to the service.
 
