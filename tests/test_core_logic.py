@@ -253,8 +253,9 @@ def test_awaiting_payment_selection_usdc(mock_save_wallet, mock_circle, mock_cur
 
     response = process_message(user_id, "USDC", MagicMock())
 
-    assert "To pay with USDC, please send exactly 130.00 USDC" in response[0]
-    assert "`mock-usdc-address`" in response[0]
+    assert len(response) == 2
+    assert "To pay with USDC, please send exactly 130.00 USDC to the address below." in response[0]
+    assert response[1] == "`mock-usdc-address`"
     
     mock_currency.convert_to_usd.assert_called_once_with(120.50, 'EUR')
     mock_circle.create_payment_intent.assert_called_once_with(130.00)

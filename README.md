@@ -11,7 +11,7 @@ This project is an AI-powered travel agent accessible via WhatsApp and Telegram.
 - **Multi-Traveler Booking**: If a booking is for more than one person, the agent collects the full names of all travelers. After payment, it generates and delivers a separate, personalized PDF ticket for each individual.
 - **Dual Payment Options**:
   - **Stripe**: Creates secure Stripe Checkout links for traditional card payments.
-  - **USDC**: Integrates with the Circle API to allow payments with USDC. The system handles currency conversion and generates unique payment addresses for each transaction.
+  - **USDC**: Integrates with Circle's Payment Intents API for robust USDC transactions. The system creates a payment intent, polls for a unique deposit address, and sends the address to the user in a separate message for easy copying.
 - **Persistent State**: Maintains conversation state for each user in a Redis database, including mappings for USDC payment tracking.
 - **Responsive Architecture**: Long-running tasks like flight searches are run in background threads, so the main application is never blocked.
 

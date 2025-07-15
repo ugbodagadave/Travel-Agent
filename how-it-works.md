@@ -92,9 +92,9 @@ This is the final part of the journey, which now offers two distinct paths: trad
 2.  **Currency Conversion (`app/currency_service.py`):** The system first checks the flight's currency. If it's not already in USD, it makes a live API call to a currency conversion service to get the exact price in USD.
 3.  **Payment Intent Generation (`app/circle_service.py`):** This is a two-step process using Circle's **Payment Intents API**, which is the correct and robust method for creating one-time payment addresses.
     *   **Step A: Create Payment Intent:** The application first makes a `POST` request to Circle's `/v1/paymentIntents` endpoint. This call includes the amount, currency (`USDC`), and a unique idempotency key. It tells Circle we *intend* to receive a payment, but it doesn't create the address just yet.
-    *   **Step B: Retrieve Deposit Address:** The application then takes the `id` from the newly created payment intent and makes a `GET` request to the `/v1/paymentIntents/{id}` endpoint. The response from this second call contains the unique `depositAddress` where the user should send the funds.
-    *   It saves a mapping of this payment intent `id` to the `user_id` in Redis. This is critical for identifying the user when the payment confirmation arrives.
-4.  **User Pays:** The user is sent the generated wallet address and the exact USDC amount to pay (e.g., `135.00 USDC`). They complete the transfer from their own crypto wallet.
+    *   **Step B: Poll for the Address:** For security reasons, Circle does not return the address synchronously. The application must poll the `GET /v1/paymentIntents/{id}` endpoint. The code enters a loop, making a request every second for up to 30 seconds, until the `address` field appears in the `paymentMethods` object of the response.
+    *   **Step C: Save Mapping:** It saves a mapping of the payment intent `id` to the `user_id` in Redis. This is critical for identifying the user when the payment confirmation webhook arrives.
+4.  **User Pays:** The user is sent two separate messages to make copying the address easier: one with the instructions and amount, and a second message containing only the generated wallet address. The user then completes the transfer from their own crypto wallet.
 
 ---
 #### Step 6: Confirmation via Webhook

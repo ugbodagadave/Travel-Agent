@@ -186,7 +186,8 @@ def process_message(user_id, incoming_msg, amadeus_service: AmadeusService):
                         # Save the wallet_id -> user_id mapping
                         save_wallet_mapping(wallet_id, user_id)
                         
-                        response_messages.append(f"To pay with USDC, please send exactly {usd_amount:.2f} USDC to the following address:\n\n`{wallet_address}`\n\nI will notify you once the payment is confirmed.")
+                        response_messages.append(f"To pay with USDC, please send exactly {usd_amount:.2f} USDC to the address below. I will notify you once the payment is confirmed.")
+                        response_messages.append(f"`{wallet_address}`")
                         state = "AWAITING_USDC_PAYMENT"
                         
                         # Add the expected amount to flight_details for verification later
