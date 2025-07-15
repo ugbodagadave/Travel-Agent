@@ -276,29 +276,33 @@ def test_awaiting_payment_selection_card(mock_create_checkout, mock_save_session
 @patch("app.core_logic.save_wallet_mapping")
 def test_awaiting_payment_selection_usdc(mock_save_wallet, mock_circle, mock_currency, mock_save_session, mock_load_session):
     """
-    Tests the 'USDC' payment path from AWAITING_PAYMENT_SELECTION.
+    Tests the 'USDC' payment path, ensuring it uses the hardcoded test amount.
     """
     user_id = "test_user_usdc"
-    selected_flight = [{'id': 'flight1', 'price': {'total': '120.50', 'currency': 'EUR'}}]
+    # The flight price is high, but the test should ignore it and use 10.00
+    selected_flight = [{'id': 'flight1', 'price': {'total': '999.99', 'currency': 'EUR'}}]
     flight_details = {"some_detail": "value"}
     mock_load_session.return_value = ("AWAITING_PAYMENT_SELECTION", ["history"], selected_flight, flight_details)
     
-    mock_currency.convert_to_usd.return_value = 130.00
+    # Currency conversion should still be called, but its result is ignored
+    mock_currency.convert_to_usd.return_value = 1050.00 
     mock_circle.create_payment_intent.return_value = {"walletId": "mock-wallet-id", "address": "mock-usdc-address"}
 
     response = process_message(user_id, "USDC", MagicMock())
 
     assert len(response) == 2
-    assert "To pay with USDC, please send exactly 130.00 USDC to the address below." in response[0]
+    # Assert that the user is asked for the hardcoded test amount
+    assert "To pay with USDC, please send exactly 10.00 USDC (test amount) to the address below." in response[0]
     assert response[1] == "`mock-usdc-address`"
     
-    mock_currency.convert_to_usd.assert_called_once_with(120.50, 'EUR')
-    mock_circle.create_payment_intent.assert_called_once_with(130.00)
+    # The currency service is no longer strictly needed for the amount, but the call might still exist
+    # depending on implementation. Let's ensure create_payment_intent is called with the HARDCODED amount.
+    mock_circle.create_payment_intent.assert_called_once_with(10.00)
     mock_save_wallet.assert_called_once_with("mock-wallet-id", user_id)
     
     # Check that the session is saved with the new state and updated details
     updated_flight_details = flight_details.copy()
-    updated_flight_details['expected_usd_amount'] = 130.00
+    updated_flight_details['expected_usd_amount'] = 10.00 # The expected amount is now 10.00
     mock_save_session.assert_called_once_with(user_id, "AWAITING_USDC_PAYMENT", ["history"], selected_flight, updated_flight_details)
 
 @patch("app.core_logic.load_session")

@@ -95,6 +95,7 @@ This is the final part of the journey, which now offers two distinct paths: trad
     *   **Step B: Poll for the Address:** For security reasons, Circle does not return the address synchronously. The application must poll the `GET /v1/paymentIntents/{id}` endpoint. The code enters a loop, making a request every second for up to 30 seconds, until the `address` field appears in the `paymentMethods` object of the response.
     *   **Step C: Save Mapping:** It saves a mapping of the payment intent `id` to the `user_id` in Redis. This is critical for identifying the user when the payment confirmation webhook arrives.
 4.  **User Pays:** The user is sent two separate messages to make copying the address easier: one with the instructions and amount, and a second message containing only the generated wallet address. The user then completes the transfer from their own crypto wallet.
+    *   **NOTE FOR TESTING:** To work with the limitations of the [Circle Testnet Faucet](https://faucet.circle.com/), which only provides 10 testnet USDC at a time, the application currently **ignores the real flight price** for USDC payments. It will always request a payment of **10.00 USDC** as a hardcoded amount. This is a temporary measure for development and testing.
 
 ---
 #### Step 6: Confirmation via Webhook
