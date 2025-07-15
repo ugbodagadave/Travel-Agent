@@ -159,29 +159,62 @@ def stripe_webhook():
 
 @app.route("/circle-webhook", methods=['POST'])
 def circle_webhook():
+    # Per Circle's documentation, the first call to a new webhook is a test.
+    # We must respond with 200 OK, so they can validate the endpoint.
+    # The initial POST request has a dummy payload, so we can't assume
+    # the 'notification' key will be present on the first call.
     data = request.get_json()
 
+    # If there's no data, it might be the initial check, or an empty push.
+    # In either case, returning 200 OK is safe.
+    if not data:
+        print("Received an empty request, likely a webhook verification.")
+        return 'OK', 200
+
+    # Handle the subscription confirmation request
+    if "notificationType" in data and data["notificationType"] == "SubscriptionConfirmation":
+        print("Received Circle subscription confirmation.")
+        return 'OK', 200
+        
     # Basic validation to ensure we have data and it's a notification
     if not data or "notification" not in data:
+        print(f"Received invalid data from Circle: {data}")
         return 'Invalid request', 400
 
     notification = data.get('notification', {})
-    if notification.get('type') != 'wallets.deposits.completed':
-        # We only care about completed deposits
+    
+    # Handle Ping
+    if notification.get('type') == 'ping':
+        print("Received ping from Circle.")
+        return 'OK', 200
+
+    if notification.get('type') != 'payments':
+        # We only care about completed deposits for now
+        # Note: The original code checked for 'wallets.deposits.completed'
+        # The new check is for 'payments' which is more generic
+        print(f"Notification type not handled: {notification.get('type')}")
         return 'Notification type not handled', 200
 
-    deposit = notification.get('deposit', {})
-    wallet_id = deposit.get('walletId')
-    amount_data = deposit.get('amount', {})
+    payment = notification.get('payment', {})
+    if not payment:
+        return 'Payment data missing', 400
+
+    # We only care about completed payments
+    if payment.get('status') != 'complete':
+        print(f"Payment status not complete: {payment.get('status')}")
+        return 'OK', 200
+
+    payment_intent_id = payment.get('paymentIntentId')
     
-    if not wallet_id or not amount_data:
-        return 'Missing walletId or amount data', 400
+    if not payment_intent_id:
+        return 'Missing paymentIntentId', 400
 
     # Retrieve user_id from our Redis mapping
-    user_id = load_user_id_from_wallet(wallet_id)
+    # Note: The plan used wallet_id, but the intent flow uses paymentIntentId
+    user_id = load_user_id_from_wallet(payment_intent_id)
     if not user_id:
-        print(f"Could not find user_id for wallet_id: {wallet_id}")
-        return 'User not found for wallet', 404
+        print(f"Could not find user_id for paymentIntentId: {payment_intent_id}")
+        return 'User not found for payment', 404
 
     # Load the user's full session
     state, conversation_history, flight_offers, flight_details = load_session(user_id)
