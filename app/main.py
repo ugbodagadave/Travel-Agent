@@ -159,113 +159,107 @@ def stripe_webhook():
 
 @app.route("/circle-webhook", methods=['POST'])
 def circle_webhook():
-    # Per Circle's documentation, the first call to a new webhook is a test.
-    # We must respond with 200 OK, so they can validate the endpoint.
-    # The initial POST request has a dummy payload, so we can't assume
-    # the 'notification' key will be present on the first call.
-    data = request.get_json()
+    """
+    Handles incoming webhooks from Circle.
 
-    # If there's no data, it might be the initial check, or an empty push.
-    # In either case, returning 200 OK is safe.
-    if not data:
-        print("Received an empty request, likely a webhook verification.")
+    This function is designed to be robust and handle multiple scenarios:
+    1.  **Subscription Confirmation**: Responds to Circle's initial verification.
+    2.  **Pings**: Responds to test pings from the Circle dashboard.
+    3.  **Payment Notifications**: Processes actual payment completion events.
+    4.  **Other Notifications**: Acknowledges other notification types without processing them to ensure the webhook remains active.
+    """
+    # Use silent=True to prevent an exception if the payload is not valid JSON.
+    data = request.get_json(silent=True)
+
+    # Acknowledge empty requests, subscription confirmations, and pings immediately.
+    if not data or \
+       data.get("notificationType") == "SubscriptionConfirmation" or \
+       data.get('notification', {}).get('type') == 'ping':
+        print("Received a webhook verification, ping, or empty request. Responding with OK.")
         return 'OK', 200
 
-    # Handle the subscription confirmation request
-    if "notificationType" in data and data["notificationType"] == "SubscriptionConfirmation":
-        print("Received Circle subscription confirmation.")
+    # From here, we expect a 'notification' object. If it's missing, we'll
+    # acknowledge the request and log it, but not treat it as an error.
+    notification = data.get('notification')
+    if not notification:
+        print(f"Received a webhook without a 'notification' object. Payload: {data}. Responding with OK.")
         return 'OK', 200
+
+    # Process only completed payment notifications.
+    notification_type = notification.get('type')
+    payment_data = notification.get('payment')
+
+    if notification_type == 'payments' and payment_data and payment_data.get('status') == 'complete':
+        print(f"Processing completed payment notification: {payment_data.get('id')}")
         
-    # Basic validation to ensure we have data and it's a notification
-    if not data or "notification" not in data:
-        print(f"Received invalid data from Circle: {data}")
-        return 'Invalid request', 400
+        payment_intent_id = payment_data.get('paymentIntentId')
+        if not payment_intent_id:
+            print("ERROR: Payment notification is missing 'paymentIntentId'.")
+            # We return 400 here because this is a malformed but relevant notification.
+            return 'Missing paymentIntentId', 400
 
-    notification = data.get('notification', {})
-    
-    # Handle Ping
-    if notification.get('type') == 'ping':
-        print("Received ping from Circle.")
-        return 'OK', 200
+        # Retrieve user_id from our Redis mapping
+        user_id = load_user_id_from_wallet(payment_intent_id)
+        if not user_id:
+            print(f"ERROR: Could not find user_id for paymentIntentId: {payment_intent_id}")
+            # 404 is appropriate as the user mapping was not found.
+            return 'User not found for payment', 404
 
-    if notification.get('type') != 'payments':
-        # We only care about completed deposits for now
-        # Note: The original code checked for 'wallets.deposits.completed'
-        # The new check is for 'payments' which is more generic
-        print(f"Notification type not handled: {notification.get('type')}")
-        return 'Notification type not handled', 200
+        # Load the user's full session
+        state, conversation_history, flight_offers, flight_details = load_session(user_id)
+        if not flight_offers:
+            print(f"Error: No flight offer found in session for {user_id} after USDC payment.")
+            return 'Flight offer not found', 404
 
-    payment = notification.get('payment', {})
-    if not payment:
-        return 'Payment data missing', 400
+        # The rest of the logic to generate and send the PDF
+        selected_flight = flight_offers[0]
+        traveler_names = flight_details.get("traveler_names", [])
+        if not traveler_names:
+            traveler_names = [selected_flight.get('traveler_name', 'traveler')]
 
-    # We only care about completed payments
-    if payment.get('status') != 'complete':
-        print(f"Payment status not complete: {payment.get('status')}")
-        return 'OK', 200
+        pdf_filenames = []
+        for name in traveler_names:
+            pdf_filename = f"flight_ticket_{sanitize_filename(name)}.pdf"
+            pdf_filenames.append(pdf_filename)
+            pdf_bytes = create_flight_itinerary(selected_flight, traveler_name=name)
+            
+            try:
+                if user_id.startswith('whatsapp:'):
+                    send_whatsapp_pdf(user_id, pdf_bytes, pdf_filename)
+                elif user_id.startswith('telegram:'):
+                    chat_id = user_id.split(':')[1]
+                    send_telegram_pdf(chat_id, pdf_bytes, pdf_filename)
+            except Exception as e:
+                print(f"Error sending PDF for {name} to {user_id}: {e}")
 
-    payment_intent_id = payment.get('paymentIntentId')
-    
-    if not payment_intent_id:
-        return 'Missing paymentIntentId', 400
-
-    # Retrieve user_id from our Redis mapping
-    # Note: The plan used wallet_id, but the intent flow uses paymentIntentId
-    user_id = load_user_id_from_wallet(payment_intent_id)
-    if not user_id:
-        print(f"Could not find user_id for paymentIntentId: {payment_intent_id}")
-        return 'User not found for payment', 404
-
-    # Load the user's full session
-    state, conversation_history, flight_offers, flight_details = load_session(user_id)
-    if not flight_offers:
-        print(f"Error: No flight offer found in session for {user_id} after USDC payment.")
-        return 'Flight offer not found', 404
-
-    # TODO: In a real app, you would verify the USDC amount received
-    # against the expected amount saved in the session.
-    # For now, we'll assume the payment is correct.
-
-    selected_flight = flight_offers[0]
-    traveler_names = flight_details.get("traveler_names", [])
-    if not traveler_names:
-        traveler_names = [selected_flight.get('traveler_name', 'traveler')]
-
-    for name in traveler_names:
-        pdf_filename = f"flight_ticket_{sanitize_filename(name)}.pdf"
-        pdf_bytes = create_flight_itinerary(selected_flight, traveler_name=name)
-        
+        # Final confirmation message
         try:
-            if user_id.startswith('whatsapp:'):
-                send_whatsapp_pdf(user_id, pdf_bytes, pdf_filename)
-            elif user_id.startswith('telegram:'):
+            num_tickets = len(traveler_names)
+            if num_tickets > 1:
+                confirmation_text = f"Thank you for booking with Flai 😊. I've sent {num_tickets} separate tickets for each passenger."
+            else:
+                confirmation_text = f"Thank you for booking with Flai 😊. Your flight ticket ({pdf_filenames[0]}) has been sent."
+            
+            if user_id.startswith('telegram:'):
                 chat_id = user_id.split(':')[1]
-                send_telegram_pdf(chat_id, pdf_bytes, pdf_filename)
+                send_message(chat_id, confirmation_text)
+
         except Exception as e:
-            print(f"Error sending PDF for {name} to {user_id}: {e}")
+            print(f"Error in post-payment flow for {user_id}: {e}")
 
-    # Final confirmation message
-    try:
-        num_tickets = len(traveler_names)
-        if num_tickets > 1:
-            confirmation_text = f"Thank you for booking with Flai 😊. I've sent {num_tickets} separate tickets for each passenger."
-        else:
-            confirmation_text = f"Thank you for booking with Flai 😊. Your flight ticket ({pdf_filename}) has been sent."
+        # Update state and save session
+        state = "BOOKING_CONFIRMED"
+        save_session(user_id, state, conversation_history, flight_offers, flight_details)
         
-        if user_id.startswith('telegram:'):
-            chat_id = user_id.split(':')[1]
-            send_message(chat_id, confirmation_text)
-        # Note: Sending a final summary message for WhatsApp is also a good idea.
-        # This can be added here if needed.
-
-    except Exception as e:
-        print(f"Error in post-payment flow for {user_id}: {e}")
-
-    # Update state and save session
-    state = "BOOKING_CONFIRMED"
-    save_session(user_id, state, conversation_history, flight_offers, flight_details)
+        print(f"Successfully processed payment and sent ticket for {user_id}.")
+        return 'OK', 200
     
-    return 'OK', 200
+    else:
+        # For any other notification type, just acknowledge it.
+        unhandled_type = payment_data.get('status') if payment_data else 'N/A'
+        print(f"Received unhandled notification type: '{notification_type}' with status: '{unhandled_type}'. Responding with OK.")
+        return 'OK', 200
+
 
 @app.route("/files/<filename>")
 def serve_file(filename):
