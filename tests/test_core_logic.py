@@ -71,16 +71,22 @@ def test_name_gathering_complete_transitions_to_class_selection(mock_extract_nam
 @patch("app.core_logic.save_session")
 def test_awaiting_class_selection_valid_input(mock_save_session, mock_load_session):
     """
-    Tests the AWAITING_CLASS_SELECTION state with a valid class.
+    Tests the AWAITING_CLASS_SELECTION state with a valid class and traveler name.
     """
-    flight_details = {"origin": "BOS", "destination": "LHR", "number_of_travelers": 1}
+    flight_details = {
+        "origin": "BOS", 
+        "destination": "LHR", 
+        "number_of_travelers": 1,
+        "traveler_name": "John Doe" # Add traveler name for the test
+    }
     mock_load_session.return_value = ("AWAITING_CLASS_SELECTION", [], [], flight_details)
 
     response = process_message("user1", "BUSINESS", MagicMock())
 
     assert "Please confirm the details" in response[0]
     assert "Class: Business" in response[0]
-    assert "Origin: BOS" in response[0] # Check other details are present
+    assert "Traveler: John Doe" in response[0] # Assert the name is in the output
+    assert "Origin: BOS" in response[0]
     
     saved_args, _ = mock_save_session.call_args
     assert saved_args[1] == "AWAITING_CONFIRMATION"

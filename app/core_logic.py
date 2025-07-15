@@ -99,13 +99,15 @@ def process_message(user_id, incoming_msg, amadeus_service: AmadeusService):
             confirmation_text = "Great. Please confirm the details for your flight search:\n"
             details_summary = []
             # Use a specific order for readability
-            order = ['origin', 'destination', 'departure_date', 'return_date', 'number_of_travelers', 'travel_class', 'traveler_names']
+            order = ['origin', 'destination', 'departure_date', 'return_date', 'number_of_travelers', 'traveler_name', 'travel_class', 'traveler_names']
             
             for key in order:
                 if key in flight_details:
                     value = flight_details[key]
                     if key == "traveler_names":
                         details_summary.append(f"- Travelers: {', '.join(value)}")
+                    elif key == "traveler_name":
+                        details_summary.append(f"- Traveler: {value}")
                     elif key == "travel_class":
                         details_summary.append(f"- Class: {value.title()}")
                     else:
@@ -163,12 +165,14 @@ def process_message(user_id, incoming_msg, amadeus_service: AmadeusService):
                 # If class is still present, re-confirm all details
                 confirmation_text = "Got it. Please confirm the updated details:\n"
                 details_summary = []
-                order = ['origin', 'destination', 'departure_date', 'return_date', 'number_of_travelers', 'travel_class', 'traveler_names']
+                order = ['origin', 'destination', 'departure_date', 'return_date', 'number_of_travelers', 'traveler_name', 'travel_class', 'traveler_names']
                 for key in order:
                     if key in flight_details:
                         value = flight_details[key]
                         if key == "traveler_names":
                             details_summary.append(f"- Travelers: {', '.join(value)}")
+                        elif key == "traveler_name":
+                            details_summary.append(f"- Traveler: {value}")
                         elif key == "travel_class":
                             details_summary.append(f"- Class: {value.title()}")
                         else:
