@@ -8,6 +8,8 @@ from app.circle_service import CircleService
 from app.currency_service import CurrencyService
 from app.new_session_manager import save_wallet_mapping
 
+TRAVEL_CLASSES = ["ECONOMY", "PREMIUM_ECONOMY", "BUSINESS", "FIRST"]
+
 # Initialize services
 circle_service = CircleService()
 currency_service = CurrencyService()
@@ -55,8 +57,12 @@ def process_message(user_id, incoming_msg, amadeus_service: AmadeusService):
                 response_messages.append(f"It looks like there are {num_travelers} travelers. Please provide their full names, separated by commas.")
                 save_session(user_id, state, updated_history, flight_offers, flight_details)
             else:
-                response_messages.append(ai_response.replace("[INFO_COMPLETE]", "").strip() + "\n\nIs this information correct?")
-                state = "AWAITING_CONFIRMATION"
+                # For a single traveler, go directly to class selection
+                state = "AWAITING_CLASS_SELECTION"
+                class_options_text = "What class would you like to fly? You can choose from: ECONOMY, PREMIUM_ECONOMY, BUSINESS, FIRST."
+                response_messages.append(class_options_text)
+                # Also add user's last message and our prompt to history
+                updated_history.append({"role": "assistant", "content": class_options_text})
                 save_session(user_id, state, updated_history, flight_offers, flight_details)
         else:
             response_messages.append(ai_response)
@@ -68,25 +74,54 @@ def process_message(user_id, incoming_msg, amadeus_service: AmadeusService):
 
         if names:
             flight_details["traveler_names"] = names
-            state = "AWAITING_CONFIRMATION"
+            state = "AWAITING_CLASS_SELECTION"
             
-            # Create a confirmation message listing all details
-            confirmation_text = "Great, I have all the names. Please confirm the details one last time:\n"
-            # This is a simplified summary. A real app might format this more nicely.
-            for key, value in flight_details.items():
-                if key != "traveler_names":
-                    confirmation_text += f"- {key.replace('_', ' ').title()}: {value}\n"
-            
-            confirmation_text += f"- Travelers: {', '.join(names)}"
-            confirmation_text += "\n\nIs this all correct?"
-            response_messages.append(confirmation_text)
+            class_options_text = "What class would you like to fly? You can choose from: ECONOMY, PREMIUM_ECONOMY, BUSINESS, FIRST."
+            response_messages.append("Great, I have all the names.")
+            response_messages.append(class_options_text)
             
             # Save the updated details and new state
+            conversation_history.append({"role": "user", "content": incoming_msg})
+            conversation_history.append({"role": "assistant", "content": "Great, I have all the names.\n" + class_options_text})
+            save_session(user_id, state, conversation_history, flight_offers, flight_details)
+        else:
+            response_messages.append(f"I'm sorry, I couldn't understand the names. Please provide exactly {num_travelers} full names, separated by commas.")
+            save_session(user_id, state, conversation_history, flight_offers, flight_details)
+
+    elif state == "AWAITING_CLASS_SELECTION":
+        selected_class = incoming_msg.strip().upper()
+
+        if selected_class in TRAVEL_CLASSES:
+            flight_details['travel_class'] = selected_class
+            state = "AWAITING_CONFIRMATION"
+
+            # Build the final confirmation message
+            confirmation_text = "Great. Please confirm the details for your flight search:\n"
+            details_summary = []
+            # Use a specific order for readability
+            order = ['origin', 'destination', 'departure_date', 'return_date', 'number_of_travelers', 'travel_class', 'traveler_names']
+            
+            for key in order:
+                if key in flight_details:
+                    value = flight_details[key]
+                    if key == "traveler_names":
+                        details_summary.append(f"- Travelers: {', '.join(value)}")
+                    elif key == "travel_class":
+                        details_summary.append(f"- Class: {value.title()}")
+                    else:
+                        details_summary.append(f"- {key.replace('_', ' ').title()}: {value}")
+
+            confirmation_text += "\n".join(details_summary)
+            confirmation_text += "\n\nIs this all correct?"
+            response_messages.append(confirmation_text)
+
+            # Update history and save session
             conversation_history.append({"role": "user", "content": incoming_msg})
             conversation_history.append({"role": "assistant", "content": confirmation_text})
             save_session(user_id, state, conversation_history, flight_offers, flight_details)
         else:
-            response_messages.append(f"I'm sorry, I couldn't understand the names. Please provide exactly {num_travelers} full names, separated by commas.")
+            # Handle invalid class selection
+            response_messages.append("That's not a valid class. Please choose from: ECONOMY, PREMIUM_ECONOMY, BUSINESS, FIRST.")
             save_session(user_id, state, conversation_history, flight_offers, flight_details)
 
     elif state == "AWAITING_CONFIRMATION":
@@ -115,8 +150,35 @@ def process_message(user_id, incoming_msg, amadeus_service: AmadeusService):
         
         elif "[INFO_COMPLETE]" in ai_response:
             # This means the user made a correction and the AI has re-confirmed.
-            response_messages.append(ai_response.replace("[INFO_COMPLETE]", "").strip() + "\n\nIs this information correct?")
-            state = "AWAITING_CONFIRMATION" # Stay in this state
+            # We will rebuild the confirmation text with the updated details.
+            flight_details = extract_flight_details_from_history(updated_history)
+            
+            # We must re-ask for class if it was part of the correction.
+            if 'travel_class' not in flight_details:
+                state = "AWAITING_CLASS_SELECTION"
+                class_options_text = "It looks like the details were updated. What class would you like to fly? You can choose from: ECONOMY, PREMIUM_ECONOMY, BUSINESS, FIRST."
+                response_messages.append(class_options_text)
+                updated_history.append({"role": "assistant", "content": class_options_text})
+            else:
+                # If class is still present, re-confirm all details
+                confirmation_text = "Got it. Please confirm the updated details:\n"
+                details_summary = []
+                order = ['origin', 'destination', 'departure_date', 'return_date', 'number_of_travelers', 'travel_class', 'traveler_names']
+                for key in order:
+                    if key in flight_details:
+                        value = flight_details[key]
+                        if key == "traveler_names":
+                            details_summary.append(f"- Travelers: {', '.join(value)}")
+                        elif key == "travel_class":
+                            details_summary.append(f"- Class: {value.title()}")
+                        else:
+                            details_summary.append(f"- {key.replace('_', ' ').title()}: {value}")
+                
+                confirmation_text += "\n".join(details_summary)
+                confirmation_text += "\n\nIs this correct?"
+                response_messages.append(confirmation_text)
+                updated_history.append({"role": "assistant", "content": confirmation_text})
+
             save_session(user_id, state, updated_history, [], flight_details)
 
         else:
