@@ -7,6 +7,7 @@ from app.tasks import search_flights_task, poll_usdc_payment_task
 from app.circle_service import CircleService
 from app.currency_service import CurrencyService
 from app.new_session_manager import save_wallet_mapping
+from dateutil import parser
 
 TRAVEL_CLASSES = ["ECONOMY", "PREMIUM_ECONOMY", "BUSINESS", "FIRST"]
 
@@ -141,6 +142,19 @@ def process_message(user_id, incoming_msg, amadeus_service: AmadeusService):
             _, _, _, flight_details = load_session(user_id)
             
             if flight_details:
+                # --- Date Formatting ---
+                # The AI may return a human-readable date, so we must parse and reformat it.
+                try:
+                    departure_date_str = flight_details.get("departure_date")
+                    if departure_date_str:
+                        # Parse the date string and reformat to YYYY-MM-DD
+                        dt_object = parser.parse(departure_date_str)
+                        flight_details["departure_date"] = dt_object.strftime('%Y-%m-%d')
+                except (ValueError, TypeError) as e:
+                    print(f"[{user_id}] - WARNING: Could not parse departure_date '{flight_details.get('departure_date')}'. Error: {e}")
+                    # If parsing fails, we might send an error message or let the Amadeus API handle it.
+                    # For now, we'll proceed and let Amadeus validate.
+                
                 # Immediately respond to the user
                 response_messages.append("Okay, I'm searching for the best flights for you. This might take a moment...")
                 

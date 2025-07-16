@@ -140,6 +140,21 @@ To run the application locally, you just need to start the web server. Make sure
 gunicorn app.main:app
 ```
 
+## Temporary Admin Tools (For Development)
+
+During development, you may need to clear the Redis database to reset all user sessions. A temporary, secure endpoint has been added for this purpose.
+
+**To clear Redis:**
+
+1.  Ensure you have set the `ADMIN_SECRET_KEY` environment variable in your `.env` file or in your Render dashboard. This should be a long, random string.
+2.  Access the following URL in your browser:
+    ```
+    <your_base_url>/admin/clear-redis/<your_secret_key>
+    ```
+3.  Replace `<your_base_url>` with your application's URL and `<your_secret_key>` with the secret key you set.
+
+**IMPORTANT**: This endpoint is intended for development and testing only. It should be removed before moving to a production environment to ensure the security of your application.
+
 ## Deployment
 This application is designed for easy deployment to **Render** using the `render.yaml` file.
 

@@ -270,6 +270,38 @@ def test_awaiting_payment_selection_card(mock_create_checkout, mock_save_session
     mock_create_checkout.assert_called_once_with(selected_flight[0], user_id)
     mock_save_session.assert_called_once_with(user_id, "AWAITING_PAYMENT", ["history"], selected_flight, {})
 
+@patch("threading.Thread")
+@patch("app.core_logic.load_session")
+@patch("app.core_logic.save_session")
+@patch("app.core_logic.get_ai_response")
+def test_process_message_confirmation_parses_date_before_task(mock_get_ai, mock_save_session, mock_load_session, mock_thread, monkeypatch):
+    """
+    Tests that a human-readable date is correctly parsed and reformatted
+    to YYYY-MM-DD before being passed to the flight search task.
+    """
+    user_id = "test_user_date_parsing"
+    flight_details = {'origin': 'LHR', 'destination': 'JFK', 'departure_date': 'July 19th, 2025'}
+    mock_load_session.return_value = ("AWAITING_CONFIRMATION", [], [], flight_details)
+    mock_get_ai.return_value = ("[CONFIRMED]", [])
+
+    # We need to correctly mock the thread's target function to inspect its arguments
+    mock_search_task = MagicMock()
+    # Configure the mock_thread to use our mock task as the target
+    mock_thread.side_effect = lambda target, args: target(*args) # This allows the task to run in the test thread
+    monkeypatch.setattr("app.core_logic.search_flights_task", mock_search_task)
+
+
+    # Action
+    process_message(user_id, "yes", MagicMock())
+
+    # Assertion
+    # Verify that the search task was called with the correctly formatted date
+    mock_search_task.assert_called_once()
+    call_args, _ = mock_search_task.call_args
+    passed_flight_details = call_args[1]
+    assert passed_flight_details['departure_date'] == '2025-07-19'
+
+
 def test_awaiting_payment_selection_usdc(monkeypatch):
     """Core logic should generate a USDC payment address and be fully isolated."""
     user_id = "test_user_usdc"
@@ -305,7 +337,8 @@ def test_awaiting_payment_selection_usdc(monkeypatch):
     # Assertions
     assert len(responses) == 2, "Should return two messages: instructions and the address."
     assert "please send exactly 10.00 USDC" in responses[0]
-    assert "`mock-usdc-address`" in responses[1]
+    # The address is now sent without backticks for easy copying
+    assert responses[1] == "mock-usdc-address"
 
     # Verify mocks were called correctly
     mock_load_session.assert_called_once_with(user_id)
