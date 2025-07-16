@@ -273,7 +273,8 @@ def process_message(user_id, incoming_msg, amadeus_service: AmadeusService):
                             
                             # Using a hardcoded test amount in the message
                             response_messages.append(f"To pay with USDC, please send exactly {usd_amount:.2f} USDC (test amount) to the address below. I will notify you once the payment is confirmed.")
-                            response_messages.append(f"`{wallet_address}`")
+                            # Send the address in a separate message with no formatting for easy copying.
+                            response_messages.append(wallet_address)
                             state = "AWAITING_USDC_PAYMENT"
                             
                             # Add the expected amount to flight_details for verification later
