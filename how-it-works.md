@@ -90,33 +90,35 @@ This is the final part of the journey, which now offers two distinct paths: trad
 
 1.  **User Selects USDC:** The user replies "USDC".
 2.  **Currency Conversion (`app/currency_service.py`):** The system first checks the flight's currency. If it's not already in USD, it makes a live API call to a currency conversion service to get the exact price in USD.
-3.  **Payment Intent Generation (`app/circle_service.py`):** This is a two-step process using Circle's **Payment Intents API**, which is the correct and robust method for creating one-time payment addresses.
-    *   **Step A: Create Payment Intent:** The application first makes a `POST` request to Circle's `/v1/paymentIntents` endpoint. This call includes the amount, currency (`USDC`), and a unique idempotency key. It tells Circle we *intend* to receive a payment, but it doesn't create the address just yet.
-    *   **Step B: Poll for the Address:** For security reasons, Circle does not return the address synchronously. The application must poll the `GET /v1/paymentIntents/{id}` endpoint. The code enters a loop, making a request every second for up to 30 seconds, until the `address` field appears in the `paymentMethods` object of the response.
-    *   **Step C: Save Mapping:** It saves a mapping of the payment intent `id` to the `user_id` in Redis. This is critical for identifying the user when the payment confirmation webhook arrives.
+3.  **Payment Intent and Address Generation (`app/circle_service.py`):** The application uses Circle's **Payment Intents API** to create a one-time payment address.
+    *   **Step A: Create Payment Intent:** A `POST` request is sent to Circle's `/v1/paymentIntents` endpoint with the amount and currency.
+    *   **Step B: Poll for Address:** The application polls the `GET /v1/paymentIntents/{id}` endpoint until Circle provides the unique `address` for the payment.
+    *   **Step C: Save Mapping:** It saves a mapping of the payment intent `id` to the `user_id` in Redis. This is critical for the polling task to identify the user later.
 4.  **User Pays:** The user is sent two separate messages to make copying the address easier: one with the instructions and amount, and a second message containing only the generated wallet address. The user then completes the transfer from their own crypto wallet.
-    *   **NOTE FOR TESTING:** To work with the limitations of the [Circle Testnet Faucet](https://faucet.circle.com/), which only provides 10 testnet USDC at a time, the application currently **ignores the real flight price** for USDC payments. It will always request a payment of **10.00 USDC** as a hardcoded amount. This is a temporary measure for development and testing.
+5.  **Start Background Polling (`app/core_logic.py` & `app/tasks.py`):**
+    *   As soon as the address is sent to the user, a new background thread is started to run the `poll_usdc_payment_task`.
+    *   The main application's work is done for now, and it can respond to other users.
+    *   **NOTE FOR TESTING:** To work with the limitations of the [Circle Testnet Faucet](https://faucet.circle.com/), the application currently **ignores the real flight price** for USDC payments and always requests **10.00 USDC**.
 
 ---
-#### Step 6: Confirmation via Webhook
+#### Step 6: Confirmation and Ticket Delivery
 
-The final confirmation step is handled by the appropriate webhook, depending on the payment method chosen.
+The final confirmation step is handled differently depending on the payment method.
 
-##### Stripe Webhook (`/stripe-webhook` in `app/main.py`)
+##### Stripe Confirmation (via Webhook)
 
-1.  **Payment Success:** Stripe sends a `checkout.session.completed` event.
-2.  **PDF Generation Loop:** The handler loads the user's session, which contains the list of traveler names. It then loops through this list. For each name, it:
-    *   Retrieves the flight offer they paid for.
-    *   Calls the `pdf_service` to generate a flight itinerary PDF, passing the specific traveler's name.
-    *   Sends the newly generated, personalized PDF directly to the user.
-3.  **Final Confirmation:** After all tickets are sent, a single confirmation message is sent (e.g., "Thank you... I've sent 2 separate tickets.").
-4.  **State Update:** The user's state is updated to `BOOKING_CONFIRMED`.
+1.  **Payment Success Webhook:** Stripe sends a `checkout.session.completed` event to the `/stripe-webhook` endpoint.
+2.  **Unified Handler:** The webhook extracts the `user_id` and calls the central `handle_successful_payment(user_id)` function.
+3.  **PDF Generation & Delivery:** This function loads the user's session, generates a personalized PDF for each traveler, sends the tickets, and updates the user's state to `BOOKING_CONFIRMED`.
 
-##### Circle Webhook (`/circle-webhook` in `app/main.py`)
+##### Circle Confirmation (via Polling)
 
-1.  **Payment Success:** Once the USDC transaction is confirmed on the blockchain, Circle sends a notification for a `payments` event, typically when the payment intent is marked as `COMPLETE`.
-2.  **User Lookup:** The webhook extracts the `paymentIntentId` from the payload and uses it to load the correct `user_id` from the Redis mapping created earlier.
-3.  **PDF Generation & Final Steps:** From here, the process is identical to the Stripe flow. The handler loads the session, generates and sends a personalized PDF for each traveler, sends a final confirmation message, and updates the user's state to `BOOKING_CONFIRMED`.
+1.  **Background Polling (`app/tasks.py`):** The `poll_usdc_payment_task` function, which has been running in the background since the payment address was created, continues to execute.
+2.  **Status Check:** Every 30 seconds, the task calls Circle's `GET /v1/paymentIntents/{id}` API endpoint to check the payment status.
+3.  **Payment Complete:** When the API returns a status of `complete`, the polling task knows the payment has succeeded.
+4.  **Unified Handler:** The polling task calls the same central `handle_successful_payment(user_id)` function.
+5.  **PDF Generation & Delivery:** Just like with Stripe, this function generates and sends the PDF tickets and updates the user's state. The polling task then stops.
+6.  **(Legacy) Circle Webhook:** The `/circle-webhook` endpoint is still present to handle any initial subscription confirmations from Circle, but it no longer processes payment success notifications. Its primary role in the payment flow is now handled by the polling task.
 
 ---
 

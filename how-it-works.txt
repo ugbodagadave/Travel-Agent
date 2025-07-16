@@ -24,8 +24,10 @@ The agent sends you the flight options as a simple, numbered list. When you repl
 *   **Technology Used:** The **Stripe API** handles card payments, and the **Circle API** handles USDC payments.
 
 **5. Booking is Confirmed... Automatically!**
-After you complete the payment (either by card or crypto), the payment provider sends an automatic notification back to our application. Once our app receives this signal, it generates your ticket.
-*   **Technology Used:** **Stripe Webhooks** and **Circle Webhooks** send the payment confirmations.
+After you complete the payment, the application confirms it and generates your ticket.
+*   **For Card Payments:** The app receives an instant notification from **Stripe Webhooks**.
+*   **For USDC Payments:** The app now uses a reliable **polling** method. It automatically checks with the **Circle API** every 30 seconds until your payment is confirmed on the blockchain.
+*   This means you get your ticket promptly without relying on potentially delayed webhooks.
 
 **6. You Get Your Ticket**
 The moment the booking is confirmed, you receive a final message on WhatsApp or Telegram with your flight itinerary as a PDF.

@@ -54,6 +54,59 @@ def send_whatsapp_pdf(to_number, pdf_bytes, filename="itinerary.pdf"):
     except Exception as e:
         print(f"Error sending PDF to WhatsApp: {e}")
 
+def handle_successful_payment(user_id):
+    """
+    Centralized handler for successful payments regardless of source (Stripe, Circle webhook, or polling).
+    Generates and sends PDF itineraries to the user and updates their session state.
+    """
+    # Load the user's session data
+    state, conversation_history, flight_offers, flight_details = load_session(user_id)
+
+    if not flight_offers:
+        print(f"[{user_id}] - ERROR: No flight offer found in session after payment.")
+        return
+
+    selected_flight = flight_offers[0]
+
+    # Determine traveler names
+    traveler_names = flight_details.get("traveler_names", [])
+    if not traveler_names:
+        traveler_names = [selected_flight.get("traveler_name", "traveler")]
+
+    pdf_filenames = []
+
+    for name in traveler_names:
+        pdf_filename = f"flight_ticket_{sanitize_filename(name)}.pdf"
+        pdf_filenames.append(pdf_filename)
+        pdf_bytes = create_flight_itinerary(selected_flight, traveler_name=name)
+
+        try:
+            if user_id.startswith('whatsapp:'):
+                send_whatsapp_pdf(user_id, pdf_bytes, pdf_filename)
+            elif user_id.startswith('telegram:'):
+                chat_id = user_id.split(':')[1]
+                send_telegram_pdf(chat_id, pdf_bytes, pdf_filename)
+        except Exception as e:
+            print(f"[{user_id}] - ERROR sending PDF for {name}: {e}")
+
+    # Send final confirmation message (Telegram only; WhatsApp message is implicit with the PDF)
+    try:
+        num_tickets = len(pdf_filenames)
+        if num_tickets > 1:
+            confirmation_text = f"Thank you for booking with Flai 😊. I've sent {num_tickets} separate tickets for each passenger."
+        else:
+            confirmation_text = f"Thank you for booking with Flai 😊. Your flight ticket ({pdf_filenames[0]}) has been sent."
+
+        if user_id.startswith('telegram:'):
+            chat_id = user_id.split(':')[1]
+            send_message(chat_id, confirmation_text)
+    except Exception as e:
+        print(f"[{user_id}] - ERROR in post-payment confirmation: {e}")
+
+    # Update the user's session state
+    state = "BOOKING_CONFIRMED"
+    save_session(user_id, state, conversation_history, flight_offers, flight_details)
+
 @app.route("/health")
 def health():
     return {'status': 'healthy'}, 200
@@ -100,60 +153,10 @@ def stripe_webhook():
     if event['type'] == 'checkout.session.completed':
         session_data = event['data']['object']
         user_id = session_data.get('client_reference_id')
-        
+
         if user_id:
-            # Load the session to get the flight offer that was paid for
-            state, conversation_history, flight_offers, flight_details = load_session(user_id)
-            
-            if flight_offers:
-                selected_flight = flight_offers[0]
-                traveler_names = flight_details.get("traveler_names", [])
-
-                # If no specific names were collected, fall back to the single name in the offer
-                if not traveler_names:
-                    traveler_names = [selected_flight.get('traveler_name', 'traveler')]
-                
-                pdf_filenames = []
-                for name in traveler_names:
-                    # Get the traveler's name and create a sanitized filename
-                    pdf_filename = f"flight_ticket_{sanitize_filename(name)}.pdf"
-                    pdf_filenames.append(pdf_filename)
-
-                    # 1. Create the PDF with the specific traveler's name
-                    pdf_bytes = create_flight_itinerary(selected_flight, traveler_name=name)
-                    
-                    # 2. Send the PDF based on the platform
-                    try:
-                        if user_id.startswith('whatsapp:'):
-                            send_whatsapp_pdf(user_id, pdf_bytes, pdf_filename)
-                        elif user_id.startswith('telegram:'):
-                            chat_id = user_id.split(':')[1]
-                            send_telegram_pdf(chat_id, pdf_bytes, pdf_filename)
-                    except Exception as e:
-                        print(f"Error sending PDF for {name} to {user_id}: {e}")
-
-                # 3. Send a final confirmation message
-                try:
-                    num_tickets = len(pdf_filenames)
-                    if num_tickets > 1:
-                        confirmation_text = f"Thank you for booking with Flai 😊. I've sent {num_tickets} separate tickets for each passenger."
-                    else:
-                        confirmation_text = f"Thank you for booking with Flai 😊. Your flight ticket ({pdf_filenames[0]}) has been sent."
-                    
-                    if user_id.startswith('telegram:'):
-                        chat_id = user_id.split(':')[1]
-                        send_message(chat_id, confirmation_text)
-                    # Note: Sending a final summary message for WhatsApp is also a good idea.
-                    # This can be added here if needed.
-
-                except Exception as e:
-                    print(f"Error in post-payment flow for {user_id}: {e}")
-                
-                # 4. Update the state
-                state = "BOOKING_CONFIRMED"
-                save_session(user_id, state, conversation_history, flight_offers, flight_details)
-            else:
-                print(f"Error: No flight offer found in session for {user_id} after payment.")
+            # Delegate to the unified payment handler
+            handle_successful_payment(user_id)
 
     return 'OK', 200
 
@@ -191,74 +194,24 @@ def circle_webhook():
 
     if notification_type == 'payments' and payment_data and payment_data.get('status') == 'complete':
         print(f"Processing completed payment notification: {payment_data.get('id')}")
-        
         payment_intent_id = payment_data.get('paymentIntentId')
         if not payment_intent_id:
             print("ERROR: Payment notification is missing 'paymentIntentId'.")
-            # We return 400 here because this is a malformed but relevant notification.
             return 'Missing paymentIntentId', 400
 
-        # Retrieve user_id from our Redis mapping
+        # Retrieve the user ID from the mapping
         user_id = load_user_id_from_wallet(payment_intent_id)
         if not user_id:
             print(f"ERROR: Could not find user_id for paymentIntentId: {payment_intent_id}")
-            # 404 is appropriate as the user mapping was not found.
             return 'User not found for payment', 404
 
-        # Load the user's full session
-        state, conversation_history, flight_offers, flight_details = load_session(user_id)
-        if not flight_offers:
-            print(f"Error: No flight offer found in session for {user_id} after USDC payment.")
-            return 'Flight offer not found', 404
+        # Delegate to the unified payment handler
+        handle_successful_payment(user_id)
 
-        # The rest of the logic to generate and send the PDF
-        selected_flight = flight_offers[0]
-        traveler_names = flight_details.get("traveler_names", [])
-        if not traveler_names:
-            traveler_names = [selected_flight.get('traveler_name', 'traveler')]
-
-        pdf_filenames = []
-        for name in traveler_names:
-            pdf_filename = f"flight_ticket_{sanitize_filename(name)}.pdf"
-            pdf_filenames.append(pdf_filename)
-            pdf_bytes = create_flight_itinerary(selected_flight, traveler_name=name)
-            
-            try:
-                if user_id.startswith('whatsapp:'):
-                    send_whatsapp_pdf(user_id, pdf_bytes, pdf_filename)
-                elif user_id.startswith('telegram:'):
-                    chat_id = user_id.split(':')[1]
-                    send_telegram_pdf(chat_id, pdf_bytes, pdf_filename)
-            except Exception as e:
-                print(f"Error sending PDF for {name} to {user_id}: {e}")
-
-        # Final confirmation message
-        try:
-            num_tickets = len(traveler_names)
-            if num_tickets > 1:
-                confirmation_text = f"Thank you for booking with Flai 😊. I've sent {num_tickets} separate tickets for each passenger."
-            else:
-                confirmation_text = f"Thank you for booking with Flai 😊. Your flight ticket ({pdf_filenames[0]}) has been sent."
-            
-            if user_id.startswith('telegram:'):
-                chat_id = user_id.split(':')[1]
-                send_message(chat_id, confirmation_text)
-
-        except Exception as e:
-            print(f"Error in post-payment flow for {user_id}: {e}")
-
-        # Update state and save session
-        state = "BOOKING_CONFIRMED"
-        save_session(user_id, state, conversation_history, flight_offers, flight_details)
-        
-        print(f"Successfully processed payment and sent ticket for {user_id}.")
         return 'OK', 200
-    
-    else:
-        # For any other notification type, just acknowledge it.
-        unhandled_type = payment_data.get('status') if payment_data else 'N/A'
-        print(f"Received unhandled notification type: '{notification_type}' with status: '{unhandled_type}'. Responding with OK.")
-        return 'OK', 200
+
+    # For all other notifications, simply acknowledge.
+    return 'OK', 200
 
 
 @app.route("/files/<filename>")

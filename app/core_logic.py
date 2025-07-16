@@ -3,7 +3,7 @@ from app.new_session_manager import load_session, save_session
 from app.ai_service import get_ai_response, extract_flight_details_from_history, extract_traveler_details, extract_traveler_names
 from app.amadeus_service import AmadeusService
 from app.payment_service import create_checkout_session
-from app.tasks import search_flights_task
+from app.tasks import search_flights_task, poll_usdc_payment_task
 from app.circle_service import CircleService
 from app.currency_service import CurrencyService
 from app.new_session_manager import save_wallet_mapping
@@ -267,6 +267,16 @@ def process_message(user_id, incoming_msg, amadeus_service: AmadeusService):
                             # Add the expected amount to flight_details for verification later
                             flight_details['expected_usd_amount'] = usd_amount
                             save_session(user_id, state, conversation_history, [selected_flight], flight_details)
+
+                            # ------------------------------------------------
+                            # Start background polling for the USDC payment
+                            # ------------------------------------------------
+                            try:
+                                poll_thread = threading.Thread(target=poll_usdc_payment_task, args=(user_id, payment_intent_id))
+                                poll_thread.start()
+                                print(f"[{user_id}] - INFO: Started polling thread for payment intent {payment_intent_id}.")
+                            except Exception as e:
+                                print(f"[{user_id}] - ERROR: Could not start polling thread: {e}")
                         else:
                             response_messages.append("Sorry, I couldn't generate a USDC payment address at the moment. Please try again or select 'Card'.")
                             save_session(user_id, state, conversation_history, [selected_flight], flight_details)

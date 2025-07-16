@@ -9,11 +9,11 @@ This project is an AI-powered travel agent accessible via WhatsApp and Telegram.
 - **Airline Name Display**: Looks up and displays the full airline name (e.g., "American Airlines") for each flight option, providing a clearer user experience.
 - **Flight Class Selection**: Users can specify their preferred travel class (e.g., Economy, Business, First Class). The application searches based on this preference and displays it in the flight options and on the final PDF ticket.
 - **Multi-Traveler Booking**: If a booking is for more than one person, the agent collects the full names of all travelers. After payment, it generates and delivers a separate, personalized PDF ticket for each individual.
-- **Dual Payment Options**:
-  - **Stripe**: Creates secure Stripe Checkout links for traditional card payments.
-  - **USDC**: Integrates with Circle's Payment Intents API for robust USDC transactions. The system creates a payment intent, polls for a unique deposit address, and sends the address to the user in a separate message for easy copying.
-- **Persistent State**: Maintains conversation state for each user in a Redis database, including mappings for USDC payment tracking.
-- **Responsive Architecture**: Long-running tasks like flight searches are run in background threads, so the main application is never blocked.
+- **Dual Payment Options & Confirmation**:
+  - **Stripe**: Creates secure Stripe Checkout links for card payments, confirmed via webhook.
+  - **USDC**: Uses Circle's API to generate a unique payment address. Payment confirmation is now handled by a robust **background polling mechanism**, which reliably checks the payment status until it's complete, ensuring timely ticket delivery.
+- **Persistent State**: Maintains conversation state for each user in a Redis database.
+- **Responsive & Resilient Architecture**: Long-running tasks like flight searches and payment polling are run in background threads, so the main application is never blocked and can recover from external service delays.
 
 ## Core Technologies
 - **Programming Language:** Python 3.11

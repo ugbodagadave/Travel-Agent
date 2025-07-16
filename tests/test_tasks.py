@@ -3,6 +3,7 @@ import pytest
 from unittest.mock import patch, MagicMock
 from app.tasks import search_flights_task
 from app.new_session_manager import save_session
+import time
 
 @pytest.fixture
 def mock_amadeus_fixture():
@@ -193,3 +194,58 @@ def test_search_flights_task_uses_travel_class(mock_send_telegram, mock_save_ses
     
     assert 'travelClass' in call_kwargs
     assert call_kwargs['travelClass'] == 'BUSINESS' 
+
+import pytest
+from unittest.mock import patch, MagicMock
+from app.tasks import poll_usdc_payment_task
+
+
+@pytest.fixture
+def mock_circle_service(monkeypatch):
+    """Fixture to mock the CircleService and its methods."""
+    mock_instance = MagicMock()
+    mock_class = MagicMock(return_value=mock_instance)
+    # Patch CircleService where it's defined so the local import in the task gets the mock.
+    monkeypatch.setattr("app.circle_service.CircleService", mock_class)
+    return mock_instance
+
+
+def test_poll_usdc_payment_task_success(monkeypatch, mock_circle_service):
+    """Polling task should call handle_successful_payment when status becomes complete."""
+    # Configure the mock to return different statuses on consecutive calls
+    mock_circle_service.get_payment_intent_status.side_effect = ["pending", "pending", "complete"]
+
+    # Spy on the successful payment handler
+    mock_handle_payment = MagicMock()
+    monkeypatch.setattr("app.main.handle_successful_payment", mock_handle_payment)
+
+    # Mock time.sleep to avoid delays during the test
+    monkeypatch.setattr("time.sleep", lambda x: None)
+
+    # Run the task
+    poll_usdc_payment_task("telegram:123", "intent_abc", poll_interval=0.01)
+
+    # Assertions
+    assert mock_circle_service.get_payment_intent_status.call_count == 3
+    mock_handle_payment.assert_called_once_with("telegram:123")
+
+
+def test_poll_usdc_payment_task_timeout(monkeypatch, mock_circle_service):
+    """Polling task should exit gracefully after timeout if payment never completes."""
+    # Configure the mock to always return 'pending'
+    mock_circle_service.get_payment_intent_status.return_value = "pending"
+
+    # Spy on the successful payment handler to ensure it's not called
+    mock_handle_payment = MagicMock()
+    monkeypatch.setattr("app.main.handle_successful_payment", mock_handle_payment)
+
+    # Mock time.sleep to avoid delays
+    monkeypatch.setattr("time.sleep", lambda x: None)
+
+    # Run the task with a very short timeout
+    poll_usdc_payment_task("telegram:456", "intent_def", poll_interval=0.01, timeout_seconds=0.05)
+
+    # The handler should never be called
+    mock_handle_payment.assert_not_called()
+    # The status should have been checked multiple times
+    assert mock_circle_service.get_payment_intent_status.call_count > 1 

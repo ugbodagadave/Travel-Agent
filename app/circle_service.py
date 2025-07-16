@@ -69,3 +69,24 @@ class CircleService:
             if e.response:
                 print(f"Response Body: {e.response.text}")
             return None 
+
+    def get_payment_intent_status(self, intent_id):
+        """Returns the latest status (e.g., 'pending', 'complete') of a given payment intent ID.
+        If an error occurs or the status cannot be determined, returns None."""
+        try:
+            resp = requests.get(
+                f"{self.base_url}/paymentIntents/{intent_id}", headers=self.headers
+            )
+            resp.raise_for_status()
+            data = resp.json().get("data", {})
+            timeline = data.get("timeline", [])
+            if not timeline:
+                return None
+            # Timeline items are ordered oldest -> newest; get the latest entry
+            latest_entry = sorted(timeline, key=lambda x: x.get("time", ""))[-1]
+            return latest_entry.get("status")
+        except requests.exceptions.RequestException as e:
+            print(f"Error fetching status for payment intent {intent_id}: {e}")
+            if e.response:
+                print(f"Response Body: {e.response.text}")
+            return None 

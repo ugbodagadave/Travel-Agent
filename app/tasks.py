@@ -6,6 +6,7 @@ from app.new_session_manager import load_session, save_session
 from app.utils import _format_flight_offers
 from app.telegram_service import send_message
 from tenacity import retry, stop_after_delay, wait_fixed, RetryError
+import time
 
 # Initialize Twilio Client for the task
 twilio_account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
@@ -117,3 +118,41 @@ def search_flights_task(user_id, flight_details):
     # Update the user's session with the new state and offers
     save_session(user_id, next_state, conversation_history, offers, flight_details)
     print(f"[{user_id}] - INFO: Session saved with new state '{next_state}'. Task finished.") 
+
+# -----------------------------------------------
+# USDC Payment Polling Task
+# -----------------------------------------------
+
+def poll_usdc_payment_task(user_id, intent_id, poll_interval=30, timeout_seconds=3600):
+    """Polls Circle for payment status until complete or timeout.
+
+    Args:
+        user_id (str): The platform-specific user identifier (e.g., telegram:12345).
+        intent_id (str): The Circle payment intent ID.
+        poll_interval (int, optional): Seconds between polls. Defaults to 30.
+        timeout_seconds (int, optional): Maximum time to poll. Defaults to 1 hour.
+    """
+    from app.circle_service import CircleService  # Imported here to avoid circular deps at load time
+    circle_service = CircleService()
+
+    start_time = time.time()
+    print(f"[{user_id}] - INFO: Starting polling for payment intent {intent_id}.")
+
+    while time.time() - start_time < timeout_seconds:
+        status = circle_service.get_payment_intent_status(intent_id)
+        print(f"[{user_id}] - DEBUG: Payment intent {intent_id} status: {status}")
+
+        if status == "complete":
+            print(f"[{user_id}] - INFO: Payment intent {intent_id} marked complete. Handling success.")
+            try:
+                from app.main import handle_successful_payment  # Local import to avoid circular deps
+                handle_successful_payment(user_id)
+            except Exception as e:
+                print(f"[{user_id}] - ERROR in handle_successful_payment: {e}")
+            return
+        elif status is None:
+            print(f"[{user_id}] - WARNING: Unable to retrieve status for {intent_id}. Will retry.")
+
+        time.sleep(poll_interval)
+
+    print(f"[{user_id}] - WARNING: Polling timed out for payment intent {intent_id} after {timeout_seconds} seconds.") 
