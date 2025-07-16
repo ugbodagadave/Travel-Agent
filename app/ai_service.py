@@ -142,40 +142,49 @@ def extract_traveler_names(message: str, num_travelers: int) -> list:
         print(f"Error extracting traveler names: {e}")
         return []
 
-def extract_flight_details_from_history(conversation_history: list) -> dict:
-    # Limit the history to the last 10 messages to keep the prompt concise
-    recent_history = conversation_history[-10:]
-    
-    # Convert the list of dicts into a clean string representation
-    history_str = "\n".join([f"{msg['role']}: {msg['content']}" for msg in recent_history if msg['role'] != 'system'])
-
-    prompt = f"""
-    Based on the following conversation history, extract the flight details into a JSON object.
-    The current year is {datetime.now().year}.
-    The JSON object should have these exact keys: "traveler_name", "origin", "destination", "departure_date", "return_date", "number_of_travelers", "travel_class".
-    - "traveler_name" should be the full name of the person traveling.
-    - "departure_date" and "return_date" must be in YYYY-MM-DD format.
-    - "return_date" should be null if it's a one-way trip.
-    - "number_of_travelers" should be an integer.
-    - "travel_class" must be one of the following values: "ECONOMY", "PREMIUM_ECONOMY", "BUSINESS", "FIRST". If the user does not specify a class, default to "ECONOMY".
-
-    Conversation:
-    {history_str}
-
-    JSON output:
+def extract_flight_details_from_history(conversation_history):
+    """
+    Parses the conversation history to extract flight details using a structured IO prompt.
+    Returns a dictionary of flight details, not a list.
     """
     try:
+        # Convert the conversation history to a string format suitable for the prompt
+        history_str = "\n".join([f"{msg['role']}: {msg['content']}" for msg in conversation_history])
+
+        # Define the IO prompt for extracting structured data
+        io_prompt = f"""
+        Extract the structured flight details from the following conversation.
+        The user might correct themselves. Always use the most recent, confirmed information.
+        If a value is not mentioned, omit the key.
+
+        CONVERSATION:
+        {history_str}
+
+        EXTRACTED JSON:
+        """
+
+        # Call the IO Intelligence API
         response = client.chat.completions.create(
             model="meta-llama/Llama-3.3-70B-Instruct",
             messages=[
                 {"role": "system", "content": "You are a data extraction expert that always returns JSON."},
-                {"role": "user", "content": prompt}
+                {"role": "user", "content": io_prompt}
             ],
             temperature=0,
             response_format={"type": "json_object"}
         )
+
+        # The API returns a list of dictionaries. For this flow, we only need the first one.
         extracted_text = response.choices[0].message.content
-        return json.loads(extracted_text)
-    except (json.JSONDecodeError, IndexError, Exception) as e:
-        print(f"Error extracting flight details: {e}")
-        return {} 
+        extracted_data = json.loads(extracted_text)
+        if isinstance(extracted_data, list) and len(extracted_data) > 0:
+            return extracted_data[0]
+        elif isinstance(extracted_data, dict):
+            # If it's already a dictionary, return it directly.
+            return extracted_data
+
+    except Exception as e:
+        print(f"An error occurred in extract_flight_details_from_history: {e}")
+    
+    # Return an empty dictionary if extraction fails or response is empty
+    return {} 

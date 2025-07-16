@@ -1,6 +1,7 @@
 import pytest
 from unittest.mock import MagicMock, patch, ANY
 from app.core_logic import process_message, TRAVEL_CLASSES
+from app.new_session_manager import save_session, load_session
 
 @pytest.fixture
 def mock_amadeus_service():
@@ -269,41 +270,57 @@ def test_awaiting_payment_selection_card(mock_create_checkout, mock_save_session
     mock_create_checkout.assert_called_once_with(selected_flight[0], user_id)
     mock_save_session.assert_called_once_with(user_id, "AWAITING_PAYMENT", ["history"], selected_flight, {})
 
-@patch("app.core_logic.load_session")
-@patch("app.core_logic.save_session")
-@patch("app.core_logic.currency_service")
-@patch("app.core_logic.circle_service")
-@patch("app.core_logic.save_wallet_mapping")
-def test_awaiting_payment_selection_usdc(mock_save_wallet, mock_circle, mock_currency, mock_save_session, mock_load_session):
-    """
-    Tests the 'USDC' payment path, ensuring it uses the hardcoded test amount.
-    """
+def test_awaiting_payment_selection_usdc(monkeypatch):
+    """Core logic should generate a USDC payment address and be fully isolated."""
     user_id = "test_user_usdc"
-    # The flight price is high, but the test should ignore it and use 10.00
-    selected_flight = [{'id': 'flight1', 'price': {'total': '999.99', 'currency': 'EUR'}}]
-    flight_details = {"some_detail": "value"}
-    mock_load_session.return_value = ("AWAITING_PAYMENT_SELECTION", ["history"], selected_flight, flight_details)
+    initial_state = "AWAITING_PAYMENT_SELECTION"
+    selected_flight = [{"price": {"total": "150.00", "currency": "EUR"}}]
     
-    # Currency conversion should still be called, but its result is ignored
-    mock_currency.convert_to_usd.return_value = 1050.00 
-    mock_circle.create_payment_intent.return_value = {"walletId": "mock-wallet-id", "address": "mock-usdc-address"}
+    # 1. Mock all session management functions to isolate from Redis
+    mock_load_session = MagicMock(return_value=(initial_state, [], selected_flight, {}))
+    mock_save_session = MagicMock()
+    mock_save_wallet = MagicMock()
+    monkeypatch.setattr("app.core_logic.load_session", mock_load_session)
+    monkeypatch.setattr("app.core_logic.save_session", mock_save_session)
+    monkeypatch.setattr("app.core_logic.save_wallet_mapping", mock_save_wallet)
 
-    response = process_message(user_id, "USDC", MagicMock())
-
-    assert len(response) == 2
-    # Assert that the user is asked for the hardcoded test amount
-    assert "To pay with USDC, please send exactly 10.00 USDC (test amount) to the address below." in response[0]
-    assert response[1] == "`mock-usdc-address`"
+    # 2. Mock external services (Circle, Currency, Threading)
+    mock_circle_service = MagicMock()
+    mock_circle_service.create_payment_intent.return_value = {
+        "walletId": "mock-wallet-id",
+        "address": "mock-usdc-address"
+    }
+    monkeypatch.setattr("app.core_logic.circle_service", mock_circle_service)
     
-    # The currency service is no longer strictly needed for the amount, but the call might still exist
-    # depending on implementation. Let's ensure create_payment_intent is called with the HARDCODED amount.
-    mock_circle.create_payment_intent.assert_called_once_with(10.00)
+    mock_currency_service = MagicMock()
+    mock_currency_service.convert_to_usd.return_value = 165.00
+    monkeypatch.setattr("app.core_logic.currency_service", mock_currency_service)
+    
+    mock_thread = MagicMock()
+    monkeypatch.setattr("threading.Thread", mock_thread)
+
+    # Action
+    responses = process_message(user_id, "usdc", amadeus_service=MagicMock())
+
+    # Assertions
+    assert len(responses) == 2, "Should return two messages: instructions and the address."
+    assert "please send exactly 10.00 USDC" in responses[0]
+    assert "`mock-usdc-address`" in responses[1]
+
+    # Verify mocks were called correctly
+    mock_load_session.assert_called_once_with(user_id)
+    mock_circle_service.create_payment_intent.assert_called_once_with(10.00)
     mock_save_wallet.assert_called_once_with("mock-wallet-id", user_id)
+    mock_thread.assert_called_once()
     
-    # Check that the session is saved with the new state and updated details
-    updated_flight_details = flight_details.copy()
-    updated_flight_details['expected_usd_amount'] = 10.00 # The expected amount is now 10.00
-    mock_save_session.assert_called_once_with(user_id, "AWAITING_USDC_PAYMENT", ["history"], selected_flight, updated_flight_details)
+    # Verify the final state was saved correctly
+    mock_save_session.assert_called_with(
+        user_id,
+        "AWAITING_USDC_PAYMENT",
+        [],
+        selected_flight,
+        {'expected_usd_amount': 10.00}
+    )
 
 @patch("app.core_logic.load_session")
 @patch("app.core_logic.save_session")

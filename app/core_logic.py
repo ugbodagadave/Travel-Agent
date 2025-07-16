@@ -44,8 +44,15 @@ def process_message(user_id, incoming_msg, amadeus_service: AmadeusService):
         ai_response, updated_history = get_ai_response(incoming_msg, conversation_history, state)
         
         if "[INFO_COMPLETE]" in ai_response:
-            flight_details = extract_flight_details_from_history(updated_history)
-            
+            # The AI service should return a dictionary, but we safeguard against it returning a list.
+            extracted_data = extract_flight_details_from_history(updated_history)
+            if isinstance(extracted_data, list) and extracted_data:
+                flight_details = extracted_data[0] # Take the first element if it's a list
+            elif isinstance(extracted_data, dict):
+                flight_details = extracted_data
+            else:
+                flight_details = {} # Default to empty dict if something is wrong
+
             # Try to get the number of travelers, default to 1 if not found or invalid
             try:
                 num_travelers = int(flight_details.get("number_of_travelers", 1))
@@ -151,10 +158,15 @@ def process_message(user_id, incoming_msg, amadeus_service: AmadeusService):
                 save_session(user_id, state, [], [], {})
         
         elif "[INFO_COMPLETE]" in ai_response:
-            # This means the user made a correction and the AI has re-confirmed.
-            # We will rebuild the confirmation text with the updated details.
-            flight_details = extract_flight_details_from_history(updated_history)
-            
+            # This means the user made a correction. Re-extract details.
+            extracted_data = extract_flight_details_from_history(updated_history)
+            if isinstance(extracted_data, list) and extracted_data:
+                flight_details = extracted_data[0] # Safeguard
+            elif isinstance(extracted_data, dict):
+                flight_details = extracted_data
+            else:
+                flight_details = {} # Default
+
             # We must re-ask for class if it was part of the correction.
             if 'travel_class' not in flight_details:
                 state = "AWAITING_CLASS_SELECTION"
