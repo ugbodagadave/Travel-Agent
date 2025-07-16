@@ -8,7 +8,7 @@ import uuid
 from app.amadeus_service import AmadeusService
 from app.telegram_service import send_message, send_pdf as send_telegram_pdf
 from app.core_logic import process_message
-from app.new_session_manager import load_session, save_session, load_user_id_from_wallet
+from app.new_session_manager import load_session, save_session, load_user_id_from_wallet, redis_client
 from app.pdf_service import create_flight_itinerary
 from app.utils import sanitize_filename
 
@@ -106,6 +106,25 @@ def handle_successful_payment(user_id):
     # Update the user's session state
     state = "BOOKING_CONFIRMED"
     save_session(user_id, state, conversation_history, flight_offers, flight_details)
+
+@app.route("/admin/clear-redis/<secret_key>")
+def clear_redis(secret_key):
+    """
+    Temporary endpoint to clear the Redis database.
+    Requires a secret key for authorization.
+    """
+    admin_key = os.environ.get("ADMIN_SECRET_KEY")
+    if not admin_key:
+        return "Admin secret key not configured.", 500
+    
+    if secret_key == admin_key:
+        try:
+            redis_client.flushall()
+            return "Redis database cleared successfully.", 200
+        except Exception as e:
+            return f"An error occurred while clearing Redis: {e}", 500
+    else:
+        return "Unauthorized.", 403
 
 @app.route("/health")
 def health():
