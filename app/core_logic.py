@@ -229,7 +229,7 @@ def process_message(user_id, incoming_msg, amadeus_service: AmadeusService):
             try:
                 selection = int(incoming_msg.strip())
                 if 1 <= selection <= len(flight_offers):
-                    selected_flight = flight_offers[0] # The user selected the first flight
+                    selected_flight = flight_offers[selection - 1] # Correctly index the selected flight
                     
                     state = "AWAITING_PAYMENT_SELECTION"
                     response_messages.append("You've selected a great flight. How would you like to pay? (Reply with 'Card' or 'USDC')")

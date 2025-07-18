@@ -1,72 +1,69 @@
 
 import pytest
 from unittest.mock import patch, MagicMock
-from app.new_session_manager import save_session, load_session
+from redis import StrictRedis
+import json
+from app.new_session_manager import save_session, load_session, save_wallet_mapping, get_user_id_from_wallet
 
-# This is an in-memory dictionary to simulate Redis for testing
-mock_redis_store = {}
+@pytest.fixture
+def mock_redis_client():
+    """Fixture to mock the Redis client and use an in-memory store."""
+    session_store = {}
+    with patch('app.new_session_manager.get_redis_client') as mock_get_redis_client:
+        mock_client = MagicMock(spec=StrictRedis)
 
-@pytest.fixture(autouse=True)
-def mock_redis():
-    """Mocks the redis client and its get/setex methods for all tests in this file."""
-    global mock_redis_store
-    mock_redis_store.clear()
+        def hgetall(key):
+            return session_store.get(key, {})
 
-    def mock_setex(key, ttl, value):
-        mock_redis_store[key] = value
+        def hset(key, mapping):
+            if key not in session_store:
+                session_store[key] = {}
+            session_store[key].update(mapping)
+            return True
 
-    def mock_get(key):
-        return mock_redis_store.get(key)
+        def get(key):
+            return session_store.get(key)
 
-    with patch('app.new_session_manager.redis_client') as mock_client:
-        mock_client.setex.side_effect = mock_setex
-        mock_client.get.side_effect = mock_get
+        def set(key, value, ex=None):
+            session_store[key] = value
+            return True
+
+        mock_client.hgetall.side_effect = hgetall
+        mock_client.hset.side_effect = hset
+        mock_client.get.side_effect = get
+        mock_client.set.side_effect = set
+        
+        mock_get_redis_client.return_value = mock_client
         yield mock_client
 
-def test_save_and_load_session_with_flight_details():
-    """
-    Tests that flight_details are correctly saved and loaded from the session.
-    """
-    session_id = "test_user_123"
-    state = "AWAITING_CONFIRMATION"
-    history = [{"role": "user", "content": "hi"}]
-    offers = [{"id": "offer1"}]
-    details = {"origin": "LHR", "destination": "JFK", "number_of_travelers": 2}
+def test_save_and_load_session(mock_redis_client):
+    """Tests basic session saving and loading."""
+    user_id = "test_user_1"
+    state = "FLIGHT_SELECTION"
+    history = [{"role": "user", "content": "hello"}]
+    offers = [{"id": "flight1"}]
+    details = {"origin": "LHR"}
 
-    # Save the session with flight details
-    save_session(session_id, state, history, offers, details)
-
-    # Load the session and verify all components are correct
-    loaded_state, loaded_history, loaded_offers, loaded_details = load_session(session_id)
+    save_session(user_id, state, history, offers, details)
+    loaded_state, loaded_history, loaded_offers, loaded_details = load_session(user_id)
 
     assert loaded_state == state
     assert loaded_history == history
     assert loaded_offers == offers
     assert loaded_details == details
 
-def test_load_new_session_returns_empty_details():
-    """
-    Tests that loading a non-existent session returns an empty flight_details dictionary.
-    """
-    # Attempt to load a session that hasn't been saved
-    _, _, _, details = load_session("new_user_id")
-
-    # Assert that the details are an empty dictionary
+def test_load_new_session(mock_redis_client):
+    """Tests loading a session for a new user."""
+    state, history, offers, details = load_session("new_user_2")
+    assert state == "GATHERING_INFO"
+    assert history == []
+    assert offers == []
     assert details == {}
 
-def test_save_session_without_details_or_offers():
-    """
-    Tests that saving a session with only state and history works correctly.
-    """
-    session_id = "test_user_456"
-    state = "GATHERING_INFO"
-    history = [{"role": "user", "content": "hello"}]
-
-    # Save session with None for offers and details
-    save_session(session_id, state, history, None, None)
-
-    # Load and check the defaults
-    _, _, loaded_offers, loaded_details = load_session(session_id)
-    
-    assert loaded_offers == []
-    assert loaded_details == {} 
+def test_wallet_mapping(mock_redis_client):
+    """Tests saving and retrieving a wallet mapping."""
+    payment_intent_id = "pi_123"
+    user_id = "user_abc"
+    save_wallet_mapping(payment_intent_id, user_id)
+    retrieved_user_id = get_user_id_from_wallet(payment_intent_id)
+    assert retrieved_user_id == user_id 

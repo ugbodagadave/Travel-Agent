@@ -1,13 +1,15 @@
 import pytest
-from unittest.mock import patch, mock_open
+from unittest.mock import patch, mock_open, MagicMock
 from app.main import app, amadeus_service, send_whatsapp_pdf
 from twilio.twiml.messaging_response import MessagingResponse
 
 @pytest.fixture
 def client():
-    app.config['TESTING'] = True
-    with app.test_client() as client:
-        yield client
+    """Create a test client for the Flask app."""
+    with patch('app.new_session_manager.get_redis_client'):
+        app.config['TESTING'] = True
+        with app.test_client() as client:
+            yield client
 
 @patch('app.main.process_message')
 def test_webhook_uses_process_message(mock_process_message, client):
