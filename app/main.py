@@ -25,44 +25,32 @@ twilio_auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
 TWILIO_WHATSAPP_NUMBER = os.environ.get("TWILIO_WHATSAPP_NUMBER")
 twilio_client = TwilioClient(twilio_account_sid, twilio_auth_token)
 
-def send_whatsapp_pdf(to_number, pdf_bytes, filename="itinerary.pdf"):
+def send_whatsapp_pdf(pdf_bytes, filename="itinerary.pdf"):
     """
-    Uploads a PDF to a file hosting service and sends the public URL to a WhatsApp user.
-    Uses 0x0.st as a robust, programmatic-friendly service.
+    Uploads a PDF to a file hosting service and returns the public URL.
+    Returns None if the upload fails.
     """
     try:
-        print(f"Attempting to upload {filename} to 0x0.st for {to_number}...")
+        print(f"Uploading {filename} to file hosting service...")
         
         response = requests.post(
             'http://0x0.st',
             files={'file': (filename, pdf_bytes, 'application/pdf')},
             timeout=30
         )
-
-        print(f"File hosting service response status: {response.status_code}")
-        
         response.raise_for_status()
-
+        
         media_url = response.text.strip()
-
         if not media_url.startswith("http"):
-            print(f"ERROR: Invalid URL received from 0x0.st. Full response: {media_url}")
-            return
+            print(f"ERROR: Invalid URL from file hosting service: {media_url}")
+            return None
 
-        print(f"Successfully uploaded {filename}, got media URL: {media_url}")
-
-        twilio_client.messages.create(
-            from_=TWILIO_WHATSAPP_NUMBER,
-            body=f"Thank you for your booking! Your itinerary is attached.",
-            media_url=[media_url],
-            to=to_number
-        )
-        print(f"PDF link successfully sent to WhatsApp user {to_number}")
+        print(f"Upload successful. Media URL: {media_url}")
+        return media_url
 
     except RequestException as e:
-        print(f"ERROR: An exception occurred while contacting the file hosting service: {e}")
-    except Exception as e:
-        print(f"ERROR: An unexpected error occurred in send_whatsapp_pdf: {e}")
+        print(f"ERROR during file upload: {e}")
+        return None
 
 def handle_successful_payment(user_id):
     """
@@ -90,26 +78,46 @@ def handle_successful_payment(user_id):
         pdf_filenames.append(pdf_filename)
         pdf_bytes = create_flight_itinerary(selected_flight, traveler_name=name)
 
-        try:
-            if user_id.startswith('whatsapp:'):
-                send_whatsapp_pdf(user_id, pdf_bytes, pdf_filename)
-            elif user_id.startswith('telegram:'):
-                chat_id = user_id.split(':')[1]
-                send_telegram_pdf(chat_id, pdf_bytes, pdf_filename)
-        except Exception as e:
-            print(f"[{user_id}] - ERROR sending PDF for {name}: {e}")
+        if user_id.startswith('whatsapp:'):
+            # For WhatsApp, upload the PDF and get a link
+            download_url = send_whatsapp_pdf(pdf_bytes, pdf_filename)
+            if download_url:
+                # Send the link in a separate message
+                twilio_client.messages.create(
+                    from_=TWILIO_WHATSAPP_NUMBER,
+                    body=f"Kindly download your flight ticket with this link:\n{download_url}",
+                    to=user_id
+                )
+            else:
+                # Send an apology message if the upload failed
+                twilio_client.messages.create(
+                    from_=TWILIO_WHATSAPP_NUMBER,
+                    body="I'm sorry, there was an error generating your ticket. Please contact support.",
+                    to=user_id
+                )
 
-    # Send final confirmation message (Telegram only; WhatsApp message is implicit with the PDF)
+        elif user_id.startswith('telegram:'):
+            # For Telegram, send the PDF directly
+            chat_id = user_id.split(':')[1]
+            send_telegram_pdf(chat_id, pdf_bytes, pdf_filename)
+
+    # Send final confirmation message
     try:
         num_tickets = len(pdf_filenames)
         if num_tickets > 1:
             confirmation_text = f"Thank you for booking with Flai 😊. I've sent {num_tickets} separate tickets for each passenger."
         else:
-            confirmation_text = f"Thank you for booking with Flai 😊. Your flight ticket ({pdf_filenames[0]}) has been sent."
+            confirmation_text = f"Thank you for booking with Flai 😊. Your flight booking is confirmed."
 
         if user_id.startswith('telegram:'):
             chat_id = user_id.split(':')[1]
             send_message(chat_id, confirmation_text)
+        elif user_id.startswith('whatsapp:'):
+            twilio_client.messages.create(
+                from_=TWILIO_WHATSAPP_NUMBER,
+                body=confirmation_text,
+                to=user_id
+            )
     except Exception as e:
         print(f"[{user_id}] - ERROR in post-payment confirmation: {e}")
 
