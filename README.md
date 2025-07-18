@@ -1,6 +1,6 @@
 # AI Travel Agent [FLAI]
 
-This project is an AI-powered travel agent accessible via WhatsApp and Telegram. It uses natural language processing to understand user requests, search for real-time flight information, and book flights. It is deployed as a single, multi-threaded web service on Render.
+FLAI is an AI-powered travel agent accessible via WhatsApp and Telegram. It uses natural language processing to understand user requests, search for real-time flight information, and book flights. Payments Can also be done using USDC. It is deployed as a single, multi-threaded web service on Render.
 
 ## Current Features
 - **Multi-Platform Support**: Communicates with users via the Twilio API for WhatsApp and the Telegram Bot API.
@@ -22,7 +22,7 @@ This project is an AI-powered travel agent accessible via WhatsApp and Telegram.
 - **Platform Integration:** Twilio (WhatsApp), Telegram Bot API
 - **AI Conversation Layer:** IO Intelligence API
 - **Flight Data API:** Amadeus Self-Service APIs
-- **Payment Processing API:** Stripe
+- **Payment Processing API:** Stripe & Circle (for USDC)
 - **Session Storage:** Render Redis
 - **Testing**: Pytest
 
