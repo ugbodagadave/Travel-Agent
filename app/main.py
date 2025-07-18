@@ -8,7 +8,7 @@ import uuid
 from app.amadeus_service import AmadeusService
 from app.telegram_service import send_message, send_pdf as send_telegram_pdf
 from app.core_logic import process_message
-from app.new_session_manager import load_session, save_session, load_user_id_from_wallet, redis_client
+from app.new_session_manager import load_session, save_session, load_user_id_from_wallet, get_redis_client
 from app.pdf_service import create_flight_itinerary
 from app.utils import sanitize_filename
 
