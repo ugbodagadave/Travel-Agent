@@ -1,23 +1,21 @@
 import os
-from flask import Flask, request, send_from_directory, url_for
+from flask import Flask, request, send_from_directory
 from twilio.twiml.messaging_response import MessagingResponse
 import stripe
 from twilio.rest import Client as TwilioClient
-import uuid
-import requests
-from requests.exceptions import RequestException
-
 from app.amadeus_service import AmadeusService
-from app.telegram_service import send_message, send_pdf as send_telegram_pdf
 from app.core_logic import process_message
-from app.new_session_manager import load_session, save_session, load_user_id_from_wallet, get_redis_client
+from app.new_session_manager import load_session, save_session, get_redis_client
+from app.telegram_service import send_message, send_telegram_pdf
 from app.pdf_service import create_flight_itinerary
 from app.utils import sanitize_filename
+from app.storage_service import setup_cloudinary, upload_pdf
 
 app = Flask(__name__)
 
-# Initialize services
+# Initialize services at startup
 amadeus_service = AmadeusService()
+setup_cloudinary()
 
 # Initialize Twilio Client
 twilio_account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
@@ -25,116 +23,68 @@ twilio_auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
 TWILIO_WHATSAPP_NUMBER = os.environ.get("TWILIO_WHATSAPP_NUMBER")
 twilio_client = TwilioClient(twilio_account_sid, twilio_auth_token)
 
-def send_whatsapp_pdf(pdf_bytes, filename="itinerary.pdf"):
-    """
-    Uploads a PDF to a file hosting service and returns the public URL.
-    Returns None if the upload fails.
-    """
-    try:
-        print(f"Uploading {filename} to file hosting service...")
-        
-        response = requests.post(
-            'http://0x0.st',
-            files={'file': (filename, pdf_bytes, 'application/pdf')},
-            timeout=30
-        )
-        response.raise_for_status()
-        
-        media_url = response.text.strip()
-        if not media_url.startswith("http"):
-            print(f"ERROR: Invalid URL from file hosting service: {media_url}")
-            return None
-
-        print(f"Upload successful. Media URL: {media_url}")
-        return media_url
-
-    except RequestException as e:
-        print(f"ERROR during file upload: {e}")
-        return None
-
 def handle_successful_payment(user_id):
     """
-    Centralized handler for successful payments regardless of source (Stripe, Circle webhook, or polling).
-    Generates and sends PDF itineraries to the user and updates their session state.
+    Centralized handler for successful payments.
     """
-    # Load the user's session data
     state, conversation_history, flight_offers, flight_details = load_session(user_id)
-
     if not flight_offers:
         print(f"[{user_id}] - ERROR: No flight offer found in session after payment.")
         return
-
     selected_flight = flight_offers[0]
-
-    # Determine traveler names
     traveler_names = flight_details.get("traveler_names", [])
     if not traveler_names:
         traveler_names = [selected_flight.get("traveler_name", "traveler")]
-
     pdf_filenames = []
-
+    all_pdfs_sent_successfully = True
     for name in traveler_names:
         pdf_filename = f"flight_ticket_{sanitize_filename(name)}.pdf"
         pdf_filenames.append(pdf_filename)
         pdf_bytes = create_flight_itinerary(selected_flight, traveler_name=name)
-
         if user_id.startswith('whatsapp:'):
-            # For WhatsApp, upload the PDF and get a link
-            download_url = send_whatsapp_pdf(pdf_bytes, pdf_filename)
+            download_url = upload_pdf(pdf_bytes, pdf_filename)
             if download_url:
-                # Send the link in a separate message
                 twilio_client.messages.create(
                     from_=TWILIO_WHATSAPP_NUMBER,
                     body=f"Kindly download your flight ticket with this link:\n{download_url}",
                     to=user_id
                 )
             else:
-                # Send an apology message if the upload failed
+                all_pdfs_sent_successfully = False
                 twilio_client.messages.create(
                     from_=TWILIO_WHATSAPP_NUMBER,
                     body="I'm sorry, there was an error generating your ticket. Please contact support.",
                     to=user_id
                 )
-
         elif user_id.startswith('telegram:'):
-            # For Telegram, send the PDF directly
             chat_id = user_id.split(':')[1]
             send_telegram_pdf(chat_id, pdf_bytes, pdf_filename)
-
-    # Send final confirmation message
-    try:
-        num_tickets = len(pdf_filenames)
-        if num_tickets > 1:
-            confirmation_text = f"Thank you for booking with Flai 😊. I've sent {num_tickets} separate tickets for each passenger."
-        else:
-            confirmation_text = f"Thank you for booking with Flai 😊. Your flight booking is confirmed."
-
-        if user_id.startswith('telegram:'):
-            chat_id = user_id.split(':')[1]
-            send_message(chat_id, confirmation_text)
-        elif user_id.startswith('whatsapp:'):
-            twilio_client.messages.create(
-                from_=TWILIO_WHATSAPP_NUMBER,
-                body=confirmation_text,
-                to=user_id
-            )
-    except Exception as e:
-        print(f"[{user_id}] - ERROR in post-payment confirmation: {e}")
-
-    # Update the user's session state
+    if all_pdfs_sent_successfully:
+        try:
+            num_tickets = len(pdf_filenames)
+            if num_tickets > 1:
+                confirmation_text = f"Thank you for booking with Flai 😊. I've sent {num_tickets} separate tickets for each passenger."
+            else:
+                confirmation_text = f"Thank you for booking with Flai 😊. Your flight booking is confirmed."
+            if user_id.startswith('telegram:'):
+                chat_id = user_id.split(':')[1]
+                send_message(chat_id, confirmation_text)
+            elif user_id.startswith('whatsapp:'):
+                twilio_client.messages.create(
+                    from_=TWILIO_WHATSAPP_NUMBER,
+                    body=confirmation_text,
+                    to=user_id
+                )
+        except Exception as e:
+            print(f"[{user_id}] - ERROR in post-payment confirmation: {e}")
     state = "BOOKING_CONFIRMED"
     save_session(user_id, state, conversation_history, flight_offers, flight_details)
 
 @app.route("/admin/clear-redis/<secret_key>")
 def clear_redis(secret_key):
-    """
-    Temporary endpoint to clear the Redis database.
-    Requires a secret key for authorization.
-    """
     admin_key = os.environ.get("ADMIN_SECRET_KEY")
     if not admin_key:
         return "Admin secret key not configured.", 500
-    
     if secret_key == admin_key:
         try:
             client = get_redis_client()
@@ -172,9 +122,7 @@ def root():
 def webhook():
     incoming_msg = request.values.get('Body', '').lower()
     user_id = request.values.get('From', '')
-    
     response_messages = process_message(user_id, incoming_msg, amadeus_service)
-
     resp = MessagingResponse()
     for msg in response_messages:
         resp.message(msg)
@@ -185,20 +133,15 @@ def stripe_webhook():
     payload = request.get_data(as_text=True)
     sig_header = request.headers.get('Stripe-Signature')
     webhook_secret = os.environ.get('STRIPE_WEBHOOK_SECRET')
-    
     try:
         event = stripe.Webhook.construct_event(payload, sig_header, webhook_secret)
     except (ValueError, stripe.error.SignatureVerificationError) as e:
         return 'Invalid request', 400
-
     if event['type'] == 'checkout.session.completed':
         session_data = event['data']['object']
         user_id = session_data.get('client_reference_id')
-
         if user_id:
-            # Delegate to the unified payment handler
             handle_successful_payment(user_id)
-
     return 'OK', 200
 
 @app.route("/circle-webhook", methods=['POST'])
@@ -269,12 +212,9 @@ def telegram_webhook():
         chat_id = data["message"]["chat"]["id"]
         text = data["message"]["text"].lower()
         user_id = f"telegram:{chat_id}"
-        
         response_messages = process_message(user_id, text, amadeus_service)
-        
         for msg in response_messages:
             send_message(chat_id, msg)
-
     return "OK", 200
 
 if __name__ == "__main__":

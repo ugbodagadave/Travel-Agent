@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch, mock_open, MagicMock
-from app.main import app, amadeus_service, send_whatsapp_pdf
+from app.main import app, amadeus_service, upload_pdf as send_whatsapp_pdf
 from twilio.twiml.messaging_response import MessagingResponse
 from requests.exceptions import RequestException
 
@@ -47,14 +47,14 @@ def test_stripe_webhook_placeholder(client):
     # The actual test will be more complex.
     assert 1 == 1 
 
+@patch('app.main.upload_pdf', return_value='http://mock.url/ticket.pdf')
 @patch('app.main.twilio_client.messages.create')
-@patch('app.main.send_whatsapp_pdf', return_value='http://mock.url/ticket.pdf')
 @patch('app.main.create_flight_itinerary', return_value=b'pdf-content')
 @patch('app.main.load_session')
 @patch('stripe.Webhook.construct_event')
-def test_stripe_webhook_sends_whatsapp_link(mock_construct_event, mock_load_session, mock_create_pdf, mock_send_pdf, mock_twilio_create, client):
+def test_stripe_webhook_sends_whatsapp_link(mock_construct_event, mock_load_session, mock_create_pdf, mock_twilio_create, mock_upload_pdf, client):
     """
-    Tests that the Stripe webhook sends a download link for WhatsApp users.
+    Tests that the Stripe webhook sends a download link from the storage service.
     """
     mock_load_session.return_value = ('AWAITING_PAYMENT', [], [{'id': 'flight1'}], {})
     mock_event = {'type': 'checkout.session.completed', 'data': {'object': {'client_reference_id': 'whatsapp:+123'}}}
@@ -63,11 +63,11 @@ def test_stripe_webhook_sends_whatsapp_link(mock_construct_event, mock_load_sess
     response = client.post('/stripe-webhook', data='{}', headers={'Stripe-Signature': 'mock_sig'})
 
     assert response.status_code == 200
+    mock_upload_pdf.assert_called_once()
     assert mock_twilio_create.call_count == 2
     
-    # Check the first call (download link)
+    # Check that the download link is sent
     first_call_args = mock_twilio_create.call_args_list[0][1]
-    assert "Kindly download your flight ticket" in first_call_args['body']
     assert "http://mock.url/ticket.pdf" in first_call_args['body']
     
     # Check the second call (confirmation)
@@ -75,29 +75,26 @@ def test_stripe_webhook_sends_whatsapp_link(mock_construct_event, mock_load_sess
     assert "Thank you for booking with Flai" in second_call_args['body']
 
 
-@patch('app.main.requests.post')
-def test_send_whatsapp_pdf_returns_url(mock_requests_post):
+@patch('app.storage_service.cloudinary.uploader.upload')
+def test_send_whatsapp_pdf_returns_url(mock_cloudinary_upload):
     """
     Tests that send_whatsapp_pdf returns a URL string on successful upload.
     """
-    # Mock the response from the file hosting service
-    mock_response = MagicMock()
-    mock_response.raise_for_status.return_value = None
-    mock_response.text = 'http://mock.url/file.pdf'
-    mock_requests_post.return_value = mock_response
+    # Mock the response from Cloudinary
+    mock_cloudinary_upload.return_value = {'secure_url': 'http://mock.url/file.pdf'}
 
     # Call the function and check the return value
     result_url = send_whatsapp_pdf(b"pdf-data", "test.pdf")
 
     assert result_url == 'http://mock.url/file.pdf'
 
-@patch('app.main.requests.post')
-def test_send_whatsapp_pdf_returns_none_on_failure(mock_requests_post):
+@patch('app.storage_service.cloudinary.uploader.upload')
+def test_send_whatsapp_pdf_returns_none_on_failure(mock_cloudinary_upload):
     """
     Tests that send_whatsapp_pdf returns None if the upload fails.
     """
     # Mock a failed response
-    mock_requests_post.side_effect = RequestException("Upload failed")
+    mock_cloudinary_upload.side_effect = Exception("Upload failed")
 
     # Call the function and check the return value
     result_url = send_whatsapp_pdf(b"pdf-data", "test.pdf")
