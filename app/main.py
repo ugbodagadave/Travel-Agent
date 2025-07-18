@@ -27,37 +27,30 @@ twilio_client = TwilioClient(twilio_account_sid, twilio_auth_token)
 
 def send_whatsapp_pdf(to_number, pdf_bytes, filename="itinerary.pdf"):
     """
-    Uploads a PDF to transfer.sh and sends the public URL to a WhatsApp user.
-    This is a more robust method than using a service that returns HTML.
+    Uploads a PDF to a file hosting service and sends the public URL to a WhatsApp user.
+    Uses 0x0.st as a robust, programmatic-friendly service.
     """
     try:
-        # Sanitize the filename for the URL
-        safe_filename = sanitize_filename(filename)
-        upload_url = f"https://transfer.sh/{safe_filename}"
+        print(f"Attempting to upload {filename} to 0x0.st for {to_number}...")
         
-        print(f"Attempting to upload {safe_filename} to {upload_url} for {to_number}...")
-        
-        response = requests.put(
-            upload_url,
-            data=pdf_bytes,
-            headers={"Content-Type": "application/pdf"},
-            timeout=30  # Increased timeout for potentially larger files
+        response = requests.post(
+            'http://0x0.st',
+            files={'file': (filename, pdf_bytes, 'application/pdf')},
+            timeout=30
         )
 
         print(f"File hosting service response status: {response.status_code}")
         
         response.raise_for_status()
 
-        # The response body from transfer.sh is the direct media URL
         media_url = response.text.strip()
 
         if not media_url.startswith("http"):
-            print(f"ERROR: Invalid URL received from transfer.sh. Full response: {media_url}")
+            print(f"ERROR: Invalid URL received from 0x0.st. Full response: {media_url}")
             return
 
-        print(f"Successfully uploaded {safe_filename}, got media URL: {media_url}")
+        print(f"Successfully uploaded {filename}, got media URL: {media_url}")
 
-        # Send the message via Twilio
         twilio_client.messages.create(
             from_=TWILIO_WHATSAPP_NUMBER,
             body=f"Thank you for your booking! Your itinerary is attached.",
@@ -67,7 +60,7 @@ def send_whatsapp_pdf(to_number, pdf_bytes, filename="itinerary.pdf"):
         print(f"PDF link successfully sent to WhatsApp user {to_number}")
 
     except RequestException as e:
-        print(f"ERROR: An exception occurred while contacting transfer.sh: {e}")
+        print(f"ERROR: An exception occurred while contacting the file hosting service: {e}")
     except Exception as e:
         print(f"ERROR: An unexpected error occurred in send_whatsapp_pdf: {e}")
 

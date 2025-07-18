@@ -109,22 +109,22 @@ def test_stripe_webhook_sends_multiple_pdfs_for_multiple_travelers(mock_send_tex
 
 
 @patch('app.main.twilio_client.messages.create')
-@patch('app.main.requests.put')
-def test_send_whatsapp_pdf_uploads_and_sends_url(mock_requests_put, mock_twilio_create):
+@patch('app.main.requests.post')
+def test_send_whatsapp_pdf_uploads_and_sends_url(mock_requests_post, mock_twilio_create):
     """
-    Tests that send_whatsapp_pdf uploads the file to transfer.sh and sends the URL.
+    Tests that send_whatsapp_pdf uploads the file to 0x0.st and sends the URL.
     """
-    # Mock the response from the transfer.sh service
+    # Mock the response from the 0x0.st service
     mock_response = MagicMock()
     mock_response.raise_for_status.return_value = None
     mock_response.text = 'http://mock.url/file.pdf'
-    mock_requests_put.return_value = mock_response
+    mock_requests_post.return_value = mock_response
 
     # Call the function
     send_whatsapp_pdf("whatsapp:+15551234567", b"pdf-data", "test.pdf")
 
-    # Verify that the file was uploaded via PUT
-    mock_requests_put.assert_called_once()
+    # Verify that the file was uploaded via POST
+    mock_requests_post.assert_called_once()
     
     # Verify that Twilio was called with the correct media URL
     mock_twilio_create.assert_called_once()
