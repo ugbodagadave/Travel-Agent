@@ -21,4 +21,22 @@ def send_message(chat_id, text, parse_mode=None):
         return response.json()
     except requests.exceptions.RequestException as e:
         print(f"Error sending message to Telegram: {e}")
+        return None
+
+def send_pdf(chat_id, pdf_bytes, filename="itinerary.pdf"):
+    """
+    Sends a PDF document to a Telegram user.
+    """
+    token = os.getenv("TELEGRAM_BOT_TOKEN")
+    url = f"https://api.telegram.org/bot{token}/sendDocument"
+    files = {'document': (filename, pdf_bytes, 'application/pdf')}
+    data = {'chat_id': chat_id}
+    
+    try:
+        response = requests.post(url, files=files, data=data)
+        response.raise_for_status()
+        print(f"PDF sent to Telegram chat_id {chat_id}")
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        print(f"Error sending PDF to Telegram: {e}")
         return None 

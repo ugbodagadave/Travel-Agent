@@ -4,40 +4,88 @@ import redis
 
 # --- Redis Connection ---
 # It's recommended to use a connection pool in a real application
-redis_client = redis.from_url(os.getenv("REDIS_URL"), decode_responses=True)
-SESSION_EXPIRATION = 86400 # 24 hours in seconds
+redis_client = None
 
-def save_session(session_id, state, conversation_history, flight_offers=None):
-    """
-    Saves the session data to Redis.
-    """
-    session_data = {
-        "state": state,
-        "conversation_history": conversation_history,
-        "flight_offers": flight_offers or []
-    }
-    
-    # Save to Redis
+def get_redis_client():
+    """Initializes and returns the Redis client."""
+    global redis_client
+    if redis_client is None and os.environ.get("REDIS_URL"):
+        try:
+            redis_client = redis.from_url(os.environ.get("REDIS_URL"), decode_responses=True)
+            redis_client.ping()
+        except redis.exceptions.ConnectionError as e:
+            print(f"Error connecting to Redis: {e}")
+            redis_client = None
+    return redis_client
+
+SESSION_EXPIRATION = 86400 # 24 hours in seconds
+WALLET_ID_PREFIX = "wallet_id:"
+WALLET_ID_EXPIRATION = 86400 # 24 hours
+
+def save_wallet_mapping(payment_intent_id, user_id):
+    """Saves a mapping from payment_intent_id to user_id."""
+    client = get_redis_client()
+    if not client:
+        print("Error: Redis client not available for wallet mapping.")
+        return
     try:
-        redis_client.setex(session_id, SESSION_EXPIRATION, json.dumps(session_data))
+        # Set with a 24-hour expiry
+        client.set(f"wallet_mapping:{payment_intent_id}", user_id, ex=86400)
+    except redis.exceptions.RedisError as e:
+        print(f"Error saving wallet mapping to Redis: {e}")
+
+def load_user_id_from_wallet(wallet_id):
+    """Loads a user ID from Redis using the Circle wallet ID."""
+    try:
+        return redis_client.get(f"{WALLET_ID_PREFIX}{wallet_id}")
+    except Exception as e:
+        print(f"Error loading user ID from wallet mapping in Redis: {e}")
+        return None
+
+def save_session(user_id, state, conversation_history, flight_offers, flight_details):
+    """Saves the user's session to Redis."""
+    client = get_redis_client()
+    if not client:
+        print("Error: Redis client not available for saving session.")
+        return
+    try:
+        session_data = {
+            "state": json.dumps(state),
+            "conversation_history": json.dumps(conversation_history),
+            "flight_offers": json.dumps(flight_offers),
+            "flight_details": json.dumps(flight_details)
+        }
+        client.hset(f"session:{user_id}", mapping=session_data)
     except redis.exceptions.RedisError as e:
         print(f"Error saving session to Redis: {e}")
 
-def load_session(session_id):
-    """
-    Loads session data from Redis.
-    """
-    # 1. Try to load from Redis
+def load_session(user_id):
+    """Loads the user's session from Redis."""
+    client = get_redis_client()
+    if not client:
+        # Return a default session if Redis is not available
+        return "GATHERING_INFO", [], [], {}
     try:
-        cached_session = redis_client.get(session_id)
-        if cached_session:
-            session_data = json.loads(cached_session)
-            state = session_data.get("state", "GATHERING_INFO")
-            history = session_data.get("conversation_history", [])
-            offers = session_data.get("flight_offers", [])
-            return state, history, offers
+        session_data = client.hgetall(f"session:{user_id}")
+        if not session_data:
+            return "GATHERING_INFO", [], [], {}
+        state = json.loads(session_data.get("state", '"GATHERING_INFO"'))
+        history = json.loads(session_data.get("conversation_history", "[]"))
+        offers = json.loads(session_data.get("flight_offers", "[]"))
+        details = json.loads(session_data.get("flight_details", "{}"))
+        return state, history, offers, details
     except redis.exceptions.RedisError as e:
         print(f"Error loading session from Redis: {e}")
-        
-    # 2. If not in Redis, return a new session.
-    return "GATHERING_INFO", [], [] 
+        return "GATHERING_INFO", [], [], {}
+
+def get_user_id_from_wallet(payment_intent_id):
+    """Retrieves a user_id from a payment_intent_id mapping."""
+    client = get_redis_client()
+    if not client:
+        print("Error: Redis client not available for wallet lookup.")
+        return None
+    try:
+        return client.get(f"wallet_mapping:{payment_intent_id}")
+    except redis.exceptions.RedisError as e:
+        print(f"Error retrieving wallet mapping from Redis: {e}")
+        return None 

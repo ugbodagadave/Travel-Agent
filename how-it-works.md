@@ -30,15 +30,25 @@ This all happens inside the `process_message` function in `app/core_logic.py`.
 
 1.  **Session Loading (`app/new_session_manager.py`):** The function immediately calls `load_session(user_id)` to fetch the user's conversation state from **Redis**. If the user is new, it creates a new session with the state `GATHERING_INFO`.
 
-2.  **AI Processing (`app/ai_service.py`):** Based on the current state, `get_ai_response` is called. It sends the conversation history to the **IO Intelligence API**, which asks clarifying questions until it has all the details (origin, destination, date, etc.). When complete, the AI returns the special tag `[INFO_COMPLETE]`.
+2.  **AI Processing (`app/ai_service.py`):** Based on the current state, `get_ai_response` is called. It sends the conversation history to the **IO Intelligence API**, which asks clarifying questions until it has all the details (origin, destination, date, travel class, etc.). When complete, the AI returns the special tag `[INFO_COMPLETE]`.
 
-3.  **State Transition & Session Saving:** The web service sees the `[INFO_COMPLETE]` tag, transitions the user's state to `AWAITING_CONFIRMATION`, and saves the updated session back to **Redis**. The confirmation summary is sent back to the user as an immediate HTTP response.
+3.  **Check for Multiple Travelers:** The application sees the `[INFO_COMPLETE]` tag and immediately extracts the structured flight details, including the `number_of_travelers`.
+    *   **If there is only one traveler,** the flow continues to the next step as usual.
+    *   **If there are multiple travelers,** the system transitions to a new state: `GATHERING_NAMES`. It saves the session and asks the user to provide the full names of all travelers.
+
+#### Step 2a: Collecting Traveler Names (New)
+
+This step only occurs if there is more than one traveler.
+
+1.  **User Provides Names:** The user replies with the names, typically in a single message (e.g., "David Ugbodaga, Esther Ugbodaga").
+2.  **Name Extraction (`app/ai_service.py`):** The `extract_traveler_names` function is called. It uses another AI prompt to parse the user's message and pull out the exact number of names required.
+3.  **State Transition & Session Saving:** Once the names are successfully extracted, they are added to the session's `flight_details`. The state is transitioned to `AWAITING_CONFIRMATION`, and the session is saved to Redis. A confirmation message is sent to the user, now listing all extracted traveler names along with the other flight details.
 
 #### Step 3: The Asynchronous Handoff (The Background Thread)
 
 This is the most critical part of the architecture.
 
-1.  **User Confirms:** The user replies "Yes". The web service receives this message.
+1.  **User Confirms:** The user replies "Yes" to the confirmation message (which now includes all traveler names). The web service receives this message.
 2.  **Task Dispatching (`app/core_logic.py`):**
     *   The `process_message` function loads the session and sees the state is `AWAITING_CONFIRMATION`.
     *   It immediately sends the user the message "Okay, I'm searching for the best flights..."
@@ -51,15 +61,84 @@ This is the most critical part of the architecture.
     *   Meanwhile, the `search_flights_task` function runs independently in its own thread.
 2.  **Execution:** The task's code executes:
     *   It calls the Amadeus API to get IATA codes.
-    *   It calls the Amadeus API again to perform the live flight search. This can take several seconds without affecting the main application.
+    *   It calls the Amadeus API again to perform the live flight search, passing the user's selected travel class. This can take several seconds without affecting the main application.
+    *   For each flight offer returned, it makes an additional call to the Amadeus API to look up the full airline name from its `carrierCode`.
 3.  **Proactive Response:**
-    *   Once the search is complete, the background thread formats the flight offers into a user-friendly list.
+    *   Once the search is complete, the background thread formats the flight offers into a user-friendly list, now including the airline name and travel class.
     *   It then connects directly to the Telegram API and sends the results as a **new, proactive message** to the user.
 4.  **Final State Update:** The thread updates the user's state in Redis to `FLIGHT_SELECTION` and saves the flight offers to their session.
 
-#### Step 5: Payment and Final Booking
+#### Step 5: Payment and Itinerary Delivery
 
-The rest of the flow follows a similar pattern. The web service handles the direct user interactions (like choosing a flight), and after payment is confirmed via a Stripe webhook, it triggers the final booking logic. Any long-running notifications could also be handled in background threads.
+This is the final part of the journey, which now offers two distinct paths: traditional card payment (Stripe) and cryptocurrency (USDC).
+
+1.  **User Selects Flight:** The user receives the list of flights and replies with the number of their choice (e.g., "1").
+
+2.  **Payment Method Selection (`app/core_logic.py`):**
+    *   The system transitions the user's state to `AWAITING_PAYMENT_SELECTION`.
+    *   It sends the message: "You've selected a great flight. How would you like to pay? (Reply with 'Card' or 'USDC')"
+
+---
+##### Path A: Paying with a Card (Stripe)
+
+1.  **User Selects Card:** The user replies "Card".
+2.  **Stripe Checkout (`app/payment_service.py`):** The system calls `create_checkout_session`, which generates a secure, unique payment link from the **Stripe API**.
+3.  **User Pays:** The user is sent the Stripe link, completes the payment, and Stripe sends a `checkout.session.completed` event to the `/stripe-webhook`.
+
+---
+##### Path B: Paying with USDC (Circle)
+
+1.  **User Selects USDC:** The user replies "USDC".
+2.  **Currency Conversion (`app/currency_service.py`):** The system first checks the flight's currency. If it's not already in USD, it makes a live API call to a currency conversion service to get the exact price in USD.
+3.  **Payment Intent and Address Generation (`app/circle_service.py`):** The application uses Circle's **Payment Intents API** to create a one-time payment address.
+    *   **Step A: Create Payment Intent:** A `POST` request is sent to Circle's `/v1/paymentIntents` endpoint with the amount and currency.
+    *   **Step B: Poll for Address:** The application polls the `GET /v1/paymentIntents/{id}` endpoint until Circle provides the unique `address` for the payment.
+    *   **Step C: Save Mapping:** It saves a mapping of the payment intent `id` to the `user_id` in Redis. This is critical for the polling task to identify the user later.
+4.  **User Pays:** The user is sent two separate messages to make copying the address easier: one with the instructions and amount, and a second message containing only the generated wallet address. The user then completes the transfer from their own crypto wallet.
+5.  **Start Background Polling (`app/core_logic.py` & `app/tasks.py`):**
+    *   As soon as the address is sent to the user, a new background thread is started to run the `poll_usdc_payment_task`.
+    *   The main application's work is done for now, and it can respond to other users.
+    *   **NOTE FOR TESTING:** To work with the limitations of the [Circle Testnet Faucet](https://faucet.circle.com/), the application currently **ignores the real flight price** for USDC payments and always requests **10.00 USDC**.
+
+---
+#### Step 6: Confirmation and Ticket Delivery
+
+The final confirmation step is handled differently depending on the payment method.
+
+##### Stripe Confirmation (via Webhook)
+
+1.  **Payment Success Webhook:** Stripe sends a `checkout.session.completed` event to the `/stripe-webhook` endpoint.
+2.  **Unified Handler:** The webhook extracts the `user_id` and calls the central `handle_successful_payment(user_id)` function.
+3.  **PDF Generation & Delivery:** This function loads the user's session, generates a personalized PDF for each traveler, sends the tickets, and updates the user's state to `BOOKING_CONFIRMED`.
+
+##### Circle Confirmation (via Polling)
+
+1.  **Background Polling (`app/tasks.py`):** The `poll_usdc_payment_task` function, which has been running in the background since the payment address was created, continues to execute.
+2.  **Status Check:** Every 30 seconds, the task calls Circle's `GET /v1/paymentIntents/{id}` API endpoint to check the payment status.
+3.  **Payment Complete:** When the API returns a status of `complete`, the polling task knows the payment has succeeded.
+4.  **Unified Handler:** The polling task calls the same central `handle_successful_payment(user_id)` function.
+5.  **PDF Generation & Delivery:** Just like with Stripe, this function generates and sends the PDF tickets and updates the user's state. The polling task then stops.
+6.  **(Legacy) Circle Webhook:** The `/circle-webhook` endpoint is still present to handle any initial subscription confirmations from Circle, but it no longer processes payment success notifications. Its primary role in the payment flow is now handled by the polling task.
+
+---
+
+### Production Considerations: Handling PDF Files
+
+**IMPORTANT:** The current method for sending PDFs on WhatsApp is designed for **testing and local development only**.
+
+*   **Current Test Implementation:** The application saves the PDF to a local `temp_files` directory on the server and serves it via a special `/files/<filename>` endpoint. This works for a single, local server but is not suitable for a real-world deployment.
+
+*   **Why This Fails in Production:**
+    *   **Ephemeral Filesystem:** Hosting platforms like Render use ephemeral filesystems. Any files written to the local disk (like our PDFs) will be **permanently deleted** every time the service restarts or redeploys.
+    *   **Not Scalable:** If the application were scaled to run on multiple instances, a request for a file would only succeed if it hit the specific server instance that generated it.
+
+*   **Recommended Production Architecture:**
+    1.  **Use Cloud Storage:** Integrate a dedicated cloud storage service like **Amazon S3**, **Google Cloud Storage**, or **Cloudinary**.
+    2.  **Direct Upload:** When the `pdf_service` generates the PDF, instead of saving it locally, upload the file bytes directly to your cloud storage bucket.
+    3.  **Use Public URL:** The cloud storage service will provide a stable, publicly accessible URL for the uploaded file.
+    4.  **Send to Twilio:** Use this permanent public URL as the `media_url` when calling the Twilio API.
+
+This approach ensures that files are persisted reliably and can be accessed from anywhere, which is essential for a scalable and robust production application.
 
 ### Technology Stack Summary
 
@@ -68,7 +147,7 @@ The rest of the flow follows a similar pattern. The web service handles the dire
 *   **Messaging Platforms:** **Twilio** for WhatsApp, **Telegram Bot API** for Telegram.
 *   **Natural Language Understanding:** **IO Intelligence API**.
 *   **Flight Data & Booking:** **Amadeus**.
-*   **Payments:** **Stripe**.
+*   **Payments:** **Stripe**, **Circle**.
 *   **Session Storage:** **Redis** is the backbone of the system, used for storing conversation state.
 *   **Testing:** **Pytest**.
 *   **Hosting:** **Render**. 

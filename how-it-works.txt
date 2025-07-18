@@ -18,15 +18,19 @@ Once you've confirmed your trip details, the front desk immediately sends you a 
 *   **Technology Used:** The **Amadeus API** provides real-time flight data, and the application uses a background **threading** process to find it without slowing down the main chat.
 
 **4. You Choose and Pay**
-The agent sends you the flight options as a simple, numbered list. When you reply with the number of the flight you want, the system generates a secure payment link for you.
-*   **Technology Used:** The **Stripe API** creates a secure, hosted checkout page.
+The agent sends you the flight options as a simple, numbered list. When you reply with the number you want, you'll be asked if you want to pay with a **Card** or with **USDC** (a type of cryptocurrency).
+*   **If you choose "Card"**: The system generates a secure payment link for you.
+*   **If you choose "USDC"**: The system gives you a unique crypto address to send your payment to.
+*   **Technology Used:** The **Stripe API** handles card payments, and the **Circle API** handles USDC payments.
 
 **5. Booking is Confirmed... Automatically!**
-After you complete the payment, Stripe sends an automatic notification back to our application. Once our app receives this signal, it asks for your final details (like your full name) and then automatically books your selected flight.
-*   **Technology Used:** **Stripe Webhooks** send the payment confirmation, and the **Amadeus API** is used again to make the final booking.
+After you complete the payment, the application confirms it and generates your ticket.
+*   **For Card Payments:** The app receives an instant notification from **Stripe Webhooks**.
+*   **For USDC Payments:** The app now uses a reliable **polling** method. It automatically checks with the **Circle API** every 30 seconds until your payment is confirmed on the blockchain.
+*   This means you get your ticket promptly without relying on potentially delayed webhooks.
 
-**6. You Get Your Confirmation**
-The moment the booking is complete, you receive a final message on WhatsApp or Telegram with your booking ID.
+**6. You Get Your Ticket**
+The moment the booking is confirmed, you receive a final message on WhatsApp or Telegram with your flight itinerary as a PDF.
 
 ---
 ### How Does It Remember Me?
