@@ -111,20 +111,25 @@ def test_stripe_webhook_sends_multiple_pdfs_for_multiple_travelers(mock_send_tex
 @patch('app.main.twilio_client.messages.create')
 @patch('app.main.open', new_callable=mock_open)
 @patch('app.main.os.path.exists', return_value=True)
-def test_send_whatsapp_pdf(mock_exists, mock_file_open, mock_twilio_create):
+@patch('app.main.requests.post')
+def test_send_whatsapp_pdf_uploads_and_sends_url(mock_requests_post, mock_exists, mock_file_open, mock_twilio_create):
     """
-    Test the send_whatsapp_pdf function for sending a PDF via Twilio.
+    Tests that send_whatsapp_pdf uploads the file and sends the correct URL.
     """
-    with app.test_request_context('/'):
-        send_whatsapp_pdf("whatsapp:+15551234567", b"pdf-data", "test.pdf")
+    # Mock the response from the file hosting service
+    mock_response = MagicMock()
+    mock_response.raise_for_status.return_value = None
+    mock_response.json.return_value = {'link': 'http://mock.url/file.pdf'}
+    mock_requests_post.return_value = mock_response
 
-    # Verify file was written
-    mock_file_open.assert_called_once()
-    handle = mock_file_open()
-    handle.write.assert_called_once_with(b"pdf-data")
+    # Call the function
+    send_whatsapp_pdf("whatsapp:+15551234567", b"pdf-data", "test.pdf")
 
-    # Verify Twilio was called
+    # Verify that the file was uploaded
+    mock_requests_post.assert_called_once()
+    
+    # Verify that Twilio was called with the correct media URL
     mock_twilio_create.assert_called_once()
     args, kwargs = mock_twilio_create.call_args
-    assert kwargs['to'] == "whatsapp:+15551234567"
-    assert "http://localhost/files/" in kwargs['media_url'][0] 
+    assert 'media_url' in kwargs
+    assert kwargs['media_url'] == ['http://mock.url/file.pdf'] 

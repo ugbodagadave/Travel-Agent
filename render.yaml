@@ -14,7 +14,7 @@ services:
     plan: free
     env: python
     buildCommand: 'pip install -r requirements.txt'
-    startCommand: 'gunicorn app.main:app'
+    startCommand: 'python -m gunicorn app.main:app'
     healthCheckPath: /
     envVars:
       - key: REDIS_URL

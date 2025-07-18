@@ -4,6 +4,7 @@ from twilio.twiml.messaging_response import MessagingResponse
 import stripe
 from twilio.rest import Client as TwilioClient
 import uuid
+import requests
 
 from app.amadeus_service import AmadeusService
 from app.telegram_service import send_message, send_pdf as send_telegram_pdf
@@ -25,25 +26,20 @@ twilio_client = TwilioClient(twilio_account_sid, twilio_auth_token)
 
 def send_whatsapp_pdf(to_number, pdf_bytes, filename="itinerary.pdf"):
     """
-    Saves a PDF, gets its public URL, and sends it to a WhatsApp user via Twilio.
+    Uploads a PDF to a file hosting service and sends the public URL to a WhatsApp user.
     """
-    temp_dir = 'temp_files'
-    if not os.path.exists(temp_dir):
-        os.makedirs(temp_dir)
-        
-    unique_filename = f"{uuid.uuid4()}_{filename}"
-    file_path = os.path.join(temp_dir, unique_filename)
-    
-    with open(file_path, 'wb') as f:
-        f.write(pdf_bytes)
-    
-    # Generate the public URL for the file
-    with app.app_context():
-        # We need to manually set the SERVER_NAME for url_for to work in a script
-        app.config['SERVER_NAME'] = os.getenv('SERVER_NAME', 'localhost:5000')
-        media_url = url_for('serve_file', filename=unique_filename, _external=True)
-
     try:
+        # Use file.io for temporary file hosting
+        response = requests.post(
+            'https://file.io/', 
+            files={'file': (filename, pdf_bytes, 'application/pdf')}
+        )
+        response.raise_for_status()
+        media_url = response.json().get('link')
+
+        if not media_url:
+            raise Exception("Failed to get media URL from file hosting service.")
+
         twilio_client.messages.create(
             from_=TWILIO_WHATSAPP_NUMBER,
             body=f"Here is your flight itinerary: {filename}",
@@ -240,6 +236,8 @@ def circle_webhook():
 @app.route("/files/<filename>")
 def serve_file(filename):
     """Serves a file from the temp_files directory."""
+    # This endpoint is no longer used for sending PDFs to WhatsApp,
+    # but we'll keep it for now for other potential uses.
     return send_from_directory('../temp_files', filename)
 
 @app.route("/telegram-webhook", methods=["POST"])
