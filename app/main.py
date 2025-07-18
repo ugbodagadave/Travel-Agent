@@ -5,6 +5,7 @@ import stripe
 from twilio.rest import Client as TwilioClient
 import uuid
 import requests
+from requests.exceptions import RequestException
 
 from app.amadeus_service import AmadeusService
 from app.telegram_service import send_message, send_pdf as send_telegram_pdf
@@ -27,28 +28,47 @@ twilio_client = TwilioClient(twilio_account_sid, twilio_auth_token)
 def send_whatsapp_pdf(to_number, pdf_bytes, filename="itinerary.pdf"):
     """
     Uploads a PDF to a file hosting service and sends the public URL to a WhatsApp user.
+    This version includes improved logging and error handling.
     """
     try:
-        # Use file.io for temporary file hosting
+        print(f"Attempting to upload {filename} to file hosting service for {to_number}...")
         response = requests.post(
-            'https://file.io/', 
-            files={'file': (filename, pdf_bytes, 'application/pdf')}
+            'https://file.io/',
+            files={'file': (filename, pdf_bytes, 'application/pdf')},
+            timeout=20  # Add a 20-second timeout
         )
+
+        # Log the response for debugging purposes
+        print(f"File hosting service response status: {response.status_code}")
+        print(f"File hosting service response body: {response.text}")
+
+        # Raise an exception for bad status codes (4xx or 5xx)
         response.raise_for_status()
-        media_url = response.json().get('link')
+
+        response_data = response.json()
+        media_url = response_data.get('link')
 
         if not media_url:
-            raise Exception("Failed to get media URL from file hosting service.")
+            print(f"ERROR: 'link' not found in file hosting response. Full response: {response_data}")
+            return  # Exit gracefully without sending a broken message
 
+        print(f"Successfully uploaded {filename}, got media URL: {media_url}")
+
+        # Send the message via Twilio
         twilio_client.messages.create(
             from_=TWILIO_WHATSAPP_NUMBER,
-            body=f"Here is your flight itinerary: {filename}",
+            body=f"Thank you for your booking! Your itinerary is attached.",
             media_url=[media_url],
             to=to_number
         )
-        print(f"PDF sent to WhatsApp user {to_number}")
+        print(f"PDF link successfully sent to WhatsApp user {to_number}")
+
+    except RequestException as e:
+        # This will catch connection errors, timeouts, etc.
+        print(f"ERROR: An exception occurred while contacting the file hosting service: {e}")
     except Exception as e:
-        print(f"Error sending PDF to WhatsApp: {e}")
+        # Catch any other unexpected errors
+        print(f"ERROR: An unexpected error occurred in send_whatsapp_pdf: {e}")
 
 def handle_successful_payment(user_id):
     """
