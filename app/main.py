@@ -119,8 +119,12 @@ def clear_redis(secret_key):
     
     if secret_key == admin_key:
         try:
-            redis_client.flushall()
-            return "Redis database cleared successfully.", 200
+            client = get_redis_client()
+            if client:
+                client.flushall()
+                return "Redis database cleared successfully.", 200
+            else:
+                return "Redis client not available.", 500
         except Exception as e:
             return f"An error occurred while clearing Redis: {e}", 500
     else:
