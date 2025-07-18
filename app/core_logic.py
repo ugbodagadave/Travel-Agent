@@ -321,6 +321,18 @@ def process_message(user_id, incoming_msg, amadeus_service: AmadeusService):
             response_messages.append("I didn't understand. Please reply with 'Card' or 'USDC'.")
             save_session(user_id, state, conversation_history, flight_offers, flight_details)
 
+    elif state == "BOOKING_CONFIRMED":
+        # If the user wants to start a new booking, reset the state.
+        if "start over" in incoming_msg.lower() or "new booking" in incoming_msg.lower():
+            state = "GATHERING_INFO"
+            response_messages.append("Of course. I can help with a new flight search. Where would you like to go?")
+            # Clear previous flight data for the new session
+            save_session(user_id, state, [], [], {})
+        else:
+            # Otherwise, inform them that the booking is complete.
+            response_messages.append("Your previous booking is complete. If you'd like to search for a new flight, please say 'start over' or 'new booking'.")
+            save_session(user_id, state, conversation_history, flight_offers, flight_details)
+
     else:
         # Default fallback for unhandled states
         response_messages.append("I'm not sure how to handle that right now. Let's start over. Where would you like to go?")
