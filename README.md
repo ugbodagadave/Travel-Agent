@@ -2,6 +2,9 @@
 
 FLAI is an AI-powered travel agent accessible via WhatsApp and Telegram. It uses natural language processing to understand user requests, search for real-time flight information, and book flights. Payments Can also be done using USDC. It is deployed as a single, multi-threaded web service on Render.
 
+Demo Video
+https://youtu.be/XwH_kJvph6k
+
 ## Current Features
 - **Multi-Platform Support**: Communicates with users via the Twilio API for WhatsApp and the Telegram Bot API.
 - **Natural Language Understanding**: Leverages the IO Intelligence API to understand conversations, manage a state machine (e.g., `GATHERING_INFO`, `FLIGHT_SELECTION`), and extract structured data like destinations, dates, and traveler details.
