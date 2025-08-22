@@ -16,6 +16,8 @@ IMPORT_TO_REQUIREMENT_MAP = {
     "fpdf": "fpdf2",
     "PIL": "Pillow",
     "psycopg2": "psycopg2-binary",
+    "eth_account": "eth-account",
+    "web3": "web3",
 }
 
 # Modules to explicitly ignore because they are local packages or not on PyPI
