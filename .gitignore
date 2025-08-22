@@ -111,4 +111,7 @@ venv.bak/
 dmypy.json
 
 # Pyre type checker
-.pyre/ 
+.pyre/
+
+# Cursor rules directory
+.cursor/rules/ 
