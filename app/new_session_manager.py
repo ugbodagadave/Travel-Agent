@@ -22,6 +22,8 @@ SESSION_EXPIRATION = 86400 # 24 hours in seconds
 WALLET_ID_PREFIX = "wallet_id:"
 WALLET_ID_EXPIRATION = 86400 # 24 hours
 
+EVM_MAPPING_PREFIX = "evm_mapping:"
+
 def save_wallet_mapping(payment_intent_id, user_id):
     """Saves a mapping from payment_intent_id to user_id."""
     client = get_redis_client()
@@ -88,4 +90,27 @@ def get_user_id_from_wallet(payment_intent_id):
         return client.get(f"wallet_mapping:{payment_intent_id}")
     except redis.exceptions.RedisError as e:
         print(f"Error retrieving wallet mapping from Redis: {e}")
+        return None
+
+# --- Circle Layer EVM helpers ---
+
+def save_evm_mapping(address: str, user_id: str, ttl_seconds: int = 86400):
+    client = get_redis_client()
+    if not client:
+        print("Error: Redis client not available for EVM mapping.")
+        return
+    try:
+        client.set(f"{EVM_MAPPING_PREFIX}{address.lower()}", user_id, ex=ttl_seconds)
+    except redis.exceptions.RedisError as e:
+        print(f"Error saving EVM mapping to Redis: {e}")
+
+def get_user_id_from_evm_address(address: str) -> str:
+    client = get_redis_client()
+    if not client:
+        print("Error: Redis client not available for EVM lookup.")
+        return None
+    try:
+        return client.get(f"{EVM_MAPPING_PREFIX}{address.lower()}")
+    except redis.exceptions.RedisError as e:
+        print(f"Error retrieving EVM mapping from Redis: {e}")
         return None 
