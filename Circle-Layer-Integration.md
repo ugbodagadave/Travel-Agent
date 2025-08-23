@@ -241,42 +241,6 @@ def poll_circlelayer_payment_task(user_id, address, token_address, amount_units,
 - Clear error messages for user communication
 - Fallback to alternative payment methods
 
-### Testing & Validation
-
-#### Test Coverage
-- **77 tests passed** including Circle Layer specific tests
-- **Integration tests** for payment flow
-- **Mock blockchain** responses for testing
-- **Edge case handling** for network failures
-
-#### Test Files Updated
-- `tests/test_circlelayer_service.py`: Service-specific tests
-- `tests/test_core_logic.py`: Payment flow integration
-- `tests/test_tasks_circlelayer.py`: Background polling tests
-
-#### Manual Testing Commands
-```bash
-# Run Circle Layer specific tests
-pytest tests/test_circlelayer_service.py -v
-
-# Test complete payment flow
-pytest tests/test_core_logic.py::test_awaiting_payment_selection_circle_layer -v
-
-# Run all tests
-pytest -v
-```
-
-## Summary
-
-The Circle Layer integration successfully provides a Web3-native payment option using the native CLAYER token. The implementation prioritizes simplicity, security, and user experience while maintaining full compatibility with the existing system architecture. All 77 tests pass, confirming the robustness of the integration.
-
-**CRITICAL SECURITY IMPROVEMENT**: The system now prevents false payment confirmations by:
-- Using unique deposit addresses for each payment
-- Tracking balance increases rather than absolute balances
-- Implementing comprehensive payment validation
-
-The system is now ready for Circle Layer testnet testing with 1 CLAYER payments, providing users with a seamless blockchain payment experience alongside traditional payment methods.
-
 ### Key Benefits Achieved
 
 ✅ **Guaranteed faucet availability** - 1 CLAYER is readily available from testnet faucets  
@@ -329,10 +293,3 @@ IO_API_KEY=your_io_intelligence_api_key
 REDIS_URL=your_redis_connection_string
 ADMIN_SECRET_KEY=your_admin_secret_for_redis_management
 ```
-
-**Key Changes Made:**
-- **Token Symbol**: Updated to `CLAYER` for native token
-- **Decimals**: Confirmed at `18` for native token precision
-- **Token Address**: Commented out as native tokens don't require contract addresses
-- **Amount**: Set to `1.0` CLAYER for testing
-- **Error Handling**: Added comprehensive fallback mechanisms
