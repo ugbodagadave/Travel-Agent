@@ -114,4 +114,7 @@ dmypy.json
 .pyre/
 
 # Cursor rules directory
-.cursor/rules/ 
+.cursor/rules/
+render_deployment.md
+polling_circle.md
+circle-layer-plan.md
