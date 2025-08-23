@@ -256,7 +256,7 @@ def process_message(user_id, incoming_msg, amadeus_service: AmadeusService):
                     selected_flight = flight_offers[selection - 1] # Correctly index the selected flight
                     
                     state = "AWAITING_PAYMENT_SELECTION"
-                    response_messages.append("You've selected a great flight. How would you like to pay? (Reply with 'Card', 'USDC', or 'Pay on-chain (Circle Layer)')")
+                    response_messages.append("You've selected a great flight. How would you like to pay? (Reply with 'Card', 'USDC', or 'On-chain')")
                     
                     # Save the selected flight in the session for the next step
                     save_session(user_id, state, conversation_history, [selected_flight], flight_details)
@@ -341,7 +341,7 @@ def process_message(user_id, incoming_msg, amadeus_service: AmadeusService):
                 response_messages.append("Sorry, there was an issue processing the flight price. Please try again.")
                 save_session(user_id, state, conversation_history, [selected_flight], flight_details)
 
-        elif "circle layer" in incoming_msg.lower() or "clayer" in incoming_msg.lower() or "circlelayer" in incoming_msg.lower():
+        elif "on-chain" in incoming_msg.lower() or "circle layer" in incoming_msg.lower() or "clayer" in incoming_msg.lower() or "circlelayer" in incoming_msg.lower():
             try:
                 # Native token configuration
                 token_symbol = os.getenv("CIRCLE_LAYER_TOKEN_SYMBOL", "CLAYER")
@@ -417,7 +417,7 @@ def process_message(user_id, incoming_msg, amadeus_service: AmadeusService):
                 save_session(user_id, state, conversation_history, [selected_flight], flight_details)
 
         else:
-            response_messages.append("I didn't understand. Please reply with 'Card', 'USDC', or 'Pay on-chain (Circle Layer)'.")
+            response_messages.append("I didn't understand. Please reply with 'Card', 'USDC', or 'On-chain'.")
             save_session(user_id, state, conversation_history, flight_offers, flight_details)
 
     elif state == "BOOKING_CONFIRMED":

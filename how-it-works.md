@@ -76,7 +76,7 @@ This is the final part of the journey, which now offers three distinct paths: tr
 
 2.  **Payment Method Selection (`app/core_logic.py`):**
     *   The system transitions the user's state to `AWAITING_PAYMENT_SELECTION`.
-    *   It sends the message: "You've selected a great flight. How would you like to pay? (Reply with 'Card', 'USDC', or 'Pay on-chain (Circle Layer)')"
+    *   It sends the message: "You've selected a great flight. How would you like to pay? (Reply with 'Card', 'USDC', or 'On-chain')"
 
 ---
 ##### Path A: Paying with a Card (Stripe)
@@ -103,7 +103,7 @@ This is the final part of the journey, which now offers three distinct paths: tr
 ---
 ##### Path C: Paying with Circle Layer (Native CLAYER Token)
 
-1.  **User Selects Circle Layer:** The user replies "Pay on-chain (Circle Layer)".
+1.  **User Selects Circle Layer:** The user replies "On-chain" (or "circle layer", "clayer", "circlelayer" for backward compatibility).
 2.  **Unique Address Generation (`app/circlelayer_service.py`):** The system generates a unique, deterministic deposit address using the merchant's mnemonic and an incrementing index to prevent address reuse.
 3.  **Initial Balance Recording:** The system records the initial balance of the deposit address before requesting payment to track balance increases.
 4.  **User Pays:** The user is sent two separate messages: one with instructions to send exactly 1.00 CLAYER, and a second message containing only the deposit address for easy copying.

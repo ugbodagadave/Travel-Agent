@@ -128,11 +128,11 @@ amount_units = int(1.0 * (10 ** 18))  # 1000000000000000000 wei
 #### 1. Payment Selection
 Users see the updated prompt:
 ```
-"You've selected a great flight. How would you like to pay? (Reply with 'Card', 'USDC', or 'Pay on-chain (Circle Layer)')"
+"You've selected a great flight. How would you like to pay? (Reply with 'Card', 'USDC', or 'On-chain')"
 ```
 
 #### 2. Circle Layer Selection
-When users choose "Pay on-chain (Circle Layer)":
+When users choose "On-chain" (or "circle layer", "clayer", "circlelayer" for backward compatibility):
 
 ```
 "To pay on Circle Layer Testnet, please send exactly 1.00 CLAYER to the address below. I will notify you once the payment is confirmed."
