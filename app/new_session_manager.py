@@ -11,11 +11,22 @@ def get_redis_client():
     global redis_client
     if redis_client is None and os.environ.get("REDIS_URL"):
         try:
-            redis_client = redis.from_url(os.environ.get("REDIS_URL"), decode_responses=True)
+            redis_url = os.environ.get("REDIS_URL")
+            print(f"[Redis] Attempting to connect to Redis URL: {redis_url[:20]}...")
+            redis_client = redis.from_url(redis_url, decode_responses=True)
             redis_client.ping()
+            print(f"[Redis] Successfully connected to Redis")
         except redis.exceptions.ConnectionError as e:
-            print(f"Error connecting to Redis: {e}")
+            print(f"[Redis] Error connecting to Redis: {e}")
             redis_client = None
+        except Exception as e:
+            print(f"[Redis] Unexpected error connecting to Redis: {e}")
+            redis_client = None
+    else:
+        if not os.environ.get("REDIS_URL"):
+            print(f"[Redis] REDIS_URL environment variable not set")
+        else:
+            print(f"[Redis] Redis client already initialized")
     return redis_client
 
 SESSION_EXPIRATION = 86400 # 24 hours in seconds

@@ -100,7 +100,35 @@ def clear_redis(secret_key):
 
 @app.route("/health")
 def health():
-    return {'status': 'healthy'}, 200
+    # Check Redis connection
+    redis_status = "unknown"
+    try:
+        redis_client = get_redis_client()
+        if redis_client:
+            redis_client.ping()
+            redis_status = "connected"
+        else:
+            redis_status = "not_available"
+    except Exception as e:
+        redis_status = f"error: {str(e)}"
+    
+    # Check environment variables
+    env_status = {
+        "REDIS_URL": "set" if os.environ.get("REDIS_URL") else "not_set",
+        "IO_API_KEY": "set" if os.environ.get("IO_API_KEY") else "not_set",
+        "TWILIO_ACCOUNT_SID": "set" if os.environ.get("TWILIO_ACCOUNT_SID") else "not_set",
+        "TELEGRAM_BOT_TOKEN": "set" if os.environ.get("TELEGRAM_BOT_TOKEN") else "not_set",
+        "AMADEUS_CLIENT_ID": "set" if os.environ.get("AMADEUS_CLIENT_ID") else "not_set",
+        "CIRCLE_API_KEY": "set" if os.environ.get("CIRCLE_API_KEY") else "not_set",
+        "STRIPE_SECRET_KEY": "set" if os.environ.get("STRIPE_SECRET_KEY") else "not_set"
+    }
+    
+    return {
+        'status': 'healthy',
+        'redis': redis_status,
+        'environment_variables': env_status,
+        'timestamp': '2025-08-23T10:45:00Z'
+    }, 200
 
 @app.route("/payment-success")
 def payment_success():

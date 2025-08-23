@@ -67,6 +67,10 @@ def get_ai_response(user_message: str, conversation_history: list, state: str) -
     conversation_history.append({"role": "user", "content": user_message})
 
     try:
+        print(f"[AI Service] Making API call to IO Intelligence with model: meta-llama/Llama-3.3-70B-Instruct")
+        print(f"[AI Service] API Key available: {'Yes' if io_api_key else 'No'}")
+        print(f"[AI Service] Base URL: https://api.intelligence.io.solutions/api/v1/")
+        
         response = client.chat.completions.create(
             model="meta-llama/Llama-3.3-70B-Instruct",
             messages=conversation_history,
@@ -74,13 +78,17 @@ def get_ai_response(user_message: str, conversation_history: list, state: str) -
         )
         ai_response = response.choices[0].message.content
         conversation_history.append({"role": "assistant", "content": ai_response})
+        print(f"[AI Service] API call successful, response length: {len(ai_response)}")
         return ai_response, conversation_history
     except Exception as e:
+        print(f"[AI Service] Error in API call: {type(e).__name__}: {e}")
         # Check if the exception has response data to get more details
         if hasattr(e, 'response') and e.response and e.response.text:
-            print(f"Error communicating with OpenAI API. Status: {e.response.status_code}, Response: {e.response.text}")
-        else:
-            print(f"An unexpected error occurred with the OpenAI API: {e}")
+            print(f"[AI Service] API Error Details - Status: {e.response.status_code}, Response: {e.response.text}")
+        elif hasattr(e, 'status_code'):
+            print(f"[AI Service] API Error Status Code: {e.status_code}")
+        elif hasattr(e, 'message'):
+            print(f"[AI Service] API Error Message: {e.message}")
             
         return "Sorry, I'm having trouble connecting to my brain right now. Please try again in a moment.", conversation_history
 
