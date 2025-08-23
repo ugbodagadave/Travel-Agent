@@ -1,12 +1,14 @@
 import threading
+import os
 from app.new_session_manager import load_session, save_session
 from app.ai_service import get_ai_response, extract_flight_details_from_history, extract_traveler_details, extract_traveler_names
 from app.amadeus_service import AmadeusService
 from app.payment_service import create_checkout_session
-from app.tasks import search_flights_task, poll_usdc_payment_task
+from app.tasks import search_flights_task, poll_usdc_payment_task, poll_circlelayer_payment_task
 from app.circle_service import CircleService
 from app.currency_service import CurrencyService
-from app.new_session_manager import save_wallet_mapping
+from app.new_session_manager import save_wallet_mapping, save_evm_mapping
+import app.circlelayer_service as circlelayer_service
 from dateutil import parser
 
 TRAVEL_CLASSES = ["ECONOMY", "PREMIUM_ECONOMY", "BUSINESS", "FIRST"]
@@ -315,6 +317,59 @@ def process_message(user_id, incoming_msg, amadeus_service: AmadeusService):
                     save_session(user_id, state, conversation_history, [selected_flight], flight_details)
             except (ValueError, TypeError):
                 response_messages.append("Sorry, there was an issue processing the flight price. Please try again.")
+                save_session(user_id, state, conversation_history, [selected_flight], flight_details)
+
+        elif "circle layer" in incoming_msg.lower() or "clayer" in incoming_msg.lower() or "circlelayer" in incoming_msg.lower():
+            try:
+                # Fixed test amount; replace with conversion logic in production
+                token_symbol = os.getenv("CIRCLE_LAYER_TOKEN_SYMBOL", "USDTt")
+                decimals = int(os.getenv("CIRCLE_LAYER_TOKEN_DECIMALS", "18"))
+                token_address = os.getenv("CIRCLE_LAYER_TOKEN_ADDRESS")
+                amount_units = 10.00
+
+                if not token_address:
+                    response_messages.append("Sorry, Circle Layer token address is not configured.")
+                    save_session(user_id, state, conversation_history, [selected_flight], flight_details)
+                    return response_messages
+
+                # Derive a deposit address (index 0 for testing)
+                deposit = circlelayer_service.CircleLayerService.create_deposit_address(index=0)
+                deposit_address = deposit.get("address")
+
+                if deposit_address:
+                    save_evm_mapping(deposit_address, user_id)
+
+                    # Persist details for verification
+                    flight_details["circlelayer"] = {
+                        "address": deposit_address,
+                        "token_address": token_address,
+                        "amount": amount_units,
+                        "decimals": decimals,
+                    }
+                    state = "AWAITING_CIRCLE_LAYER_PAYMENT"
+                    save_session(user_id, state, conversation_history, [selected_flight], flight_details)
+
+                    # Notify user (two messages for easy copy of address)
+                    response_messages.append(
+                        f"To pay on Circle Layer Testnet, please send exactly {amount_units:.2f} {token_symbol} to the address below. I will notify you once the payment is confirmed."
+                    )
+                    response_messages.append(deposit_address)
+
+                    # Start background poller
+                    try:
+                        poll_thread = threading.Thread(
+                            target=poll_circlelayer_payment_task,
+                            args=(user_id, deposit_address, token_address, amount_units, decimals),
+                        )
+                        poll_thread.start()
+                    except Exception as e:
+                        print(f"[{user_id}] - ERROR: Could not start Circle Layer polling thread: {e}")
+                else:
+                    response_messages.append("Sorry, I couldn't generate a Circle Layer address right now. Please try again or choose 'Card'.")
+                    save_session(user_id, state, conversation_history, [selected_flight], flight_details)
+            except Exception as e:
+                print(f"[{user_id}] - ERROR in Circle Layer payment flow: {e}")
+                response_messages.append("Sorry, something went wrong initializing Circle Layer payment. Please try again or choose 'Card'.")
                 save_session(user_id, state, conversation_history, [selected_flight], flight_details)
 
         else:

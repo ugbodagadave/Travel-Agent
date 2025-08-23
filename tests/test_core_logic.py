@@ -2,6 +2,7 @@ import pytest
 from unittest.mock import MagicMock, patch, ANY
 from app.core_logic import process_message, TRAVEL_CLASSES
 from app.new_session_manager import save_session, load_session
+import os
 
 @pytest.fixture
 def mock_amadeus_service():
@@ -354,6 +355,30 @@ def test_awaiting_payment_selection_usdc(monkeypatch):
         selected_flight,
         {'expected_usd_amount': 10.00}
     )
+
+@patch("app.core_logic.load_session")
+@patch("app.core_logic.save_session")
+@patch("threading.Thread")
+@patch("app.core_logic.save_evm_mapping")
+@patch("app.core_logic.circlelayer_service.CircleLayerService.create_deposit_address", return_value={"address": "0xDEPOSIT"})
+def test_awaiting_payment_selection_circle_layer(mock_create_deposit, mock_save_evm, mock_thread, mock_save_session, mock_load_session):
+    user_id = "test_user_clayer"
+    selected_flight = [{"price": {"total": "200.00", "currency": "USD"}}]
+    mock_load_session.return_value = ("AWAITING_PAYMENT_SELECTION", [], selected_flight, {})
+
+    responses = process_message(user_id, "Circle Layer", MagicMock())
+
+    assert len(responses) == 2
+    assert "please send exactly" in responses[0].lower()
+    assert responses[1] == "0xDEPOSIT"
+    mock_save_session.assert_called_with(user_id, "AWAITING_CIRCLE_LAYER_PAYMENT", [], selected_flight, {
+        'circlelayer': {
+            'address': '0xDEPOSIT',
+            'token_address': os.getenv('CIRCLE_LAYER_TOKEN_ADDRESS'),
+            'amount': 10.0,
+            'decimals': int(os.getenv('CIRCLE_LAYER_TOKEN_DECIMALS', '18'))
+        }
+    })
 
 @patch("app.core_logic.load_session")
 @patch("app.core_logic.save_session")

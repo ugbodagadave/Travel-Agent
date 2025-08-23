@@ -228,7 +228,8 @@ def poll_circlelayer_payment_task(user_id: str, address: str, token_address: str
 
             last_from = to_block
         except Exception as e:
-            print(f"[{user_id}] - WARNING: Polling error: {e}")
+            # Network hiccup / RPC failover; log and keep trying
+            print(f"[{user_id}] - WARNING: Circle Layer polling error: {e}")
 
         time.sleep(poll_interval)
 
