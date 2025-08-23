@@ -38,7 +38,14 @@ def process_message(user_id, incoming_msg, amadeus_service: AmadeusService):
     Processes an incoming message from any platform.
     Returns a list of response messages to be sent back to the user.
     """
-    state, conversation_history, flight_offers, flight_details = load_session(user_id)
+    try:
+        state, conversation_history, flight_offers, flight_details = load_session(user_id)
+        print(f"[Core Logic] Loaded session for {user_id}: state={state}")
+    except Exception as e:
+        print(f"[Core Logic] ERROR loading session for {user_id}: {e}")
+        # Fallback to default state if Redis fails
+        state, conversation_history, flight_offers, flight_details = "GATHERING_INFO", [], [], {}
+    
     response_messages = []
 
     # NOTE: This is a simplified version of the logic from app/main.py's webhook.
@@ -65,7 +72,12 @@ def process_message(user_id, incoming_msg, amadeus_service: AmadeusService):
             if num_travelers > 1:
                 state = "GATHERING_NAMES"
                 response_messages.append(f"It looks like there are {num_travelers} travelers. Please provide their full names, separated by commas.")
-                save_session(user_id, state, updated_history, flight_offers, flight_details)
+                try:
+                    save_session(user_id, state, updated_history, flight_offers, flight_details)
+                    print(f"[Core Logic] Session saved for {user_id}")
+                except Exception as e:
+                    print(f"[Core Logic] WARNING: Could not save session for {user_id}: {e}")
+                    # Continue processing even if session save fails
             else:
                 # For a single traveler, go directly to class selection
                 state = "AWAITING_CLASS_SELECTION"
@@ -73,10 +85,20 @@ def process_message(user_id, incoming_msg, amadeus_service: AmadeusService):
                 response_messages.append(class_options_text)
                 # Also add user's last message and our prompt to history
                 updated_history.append({"role": "assistant", "content": class_options_text})
-                save_session(user_id, state, updated_history, flight_offers, flight_details)
+                try:
+                    save_session(user_id, state, updated_history, flight_offers, flight_details)
+                    print(f"[Core Logic] Session saved for {user_id}")
+                except Exception as e:
+                    print(f"[Core Logic] WARNING: Could not save session for {user_id}: {e}")
+                    # Continue processing even if session save fails
         else:
             response_messages.append(ai_response)
-            save_session(user_id, state, updated_history, flight_offers, flight_details)
+            try:
+                save_session(user_id, state, updated_history, flight_offers, flight_details)
+                print(f"[Core Logic] Session saved for {user_id}")
+            except Exception as e:
+                print(f"[Core Logic] WARNING: Could not save session for {user_id}: {e}")
+                # Continue processing even if session save fails
 
     elif state == "GATHERING_NAMES":
         num_travelers = int(flight_details.get("number_of_travelers", 1))

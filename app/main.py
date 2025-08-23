@@ -148,13 +148,26 @@ def root():
 
 @app.route("/webhook", methods=['POST'])
 def webhook():
-    incoming_msg = request.values.get('Body', '').lower()
+    print(f"[Webhook] Received WhatsApp webhook request")
+    incoming_msg = request.values.get('Body', '')
     user_id = request.values.get('From', '')
-    response_messages = process_message(user_id, incoming_msg, amadeus_service)
-    resp = MessagingResponse()
-    for msg in response_messages:
-        resp.message(msg)
-    return str(resp)
+    print(f"[Webhook] Processing message from {user_id}: '{incoming_msg[:50]}...'")
+    
+    try:
+        response_messages = process_message(user_id, incoming_msg, amadeus_service)
+        print(f"[Webhook] Process message returned {len(response_messages)} responses")
+        resp = MessagingResponse()
+        for msg in response_messages:
+            resp.message(msg)
+        return str(resp)
+    except Exception as e:
+        print(f"[Webhook] ERROR in process_message: {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
+        # Return a simple error response
+        resp = MessagingResponse()
+        resp.message("I'm experiencing technical difficulties. Please try again later.")
+        return str(resp)
 
 @app.route("/stripe-webhook", methods=['POST'])
 def stripe_webhook():
@@ -233,17 +246,39 @@ def serve_file(filename):
     # but we'll keep it for now for other potential uses.
     return send_from_directory('../temp_files', filename)
 
-@app.route("/telegram-webhook", methods=["POST"])
+@app.route("/telegram-webhook", methods=['POST'])
 def telegram_webhook():
-    data = request.get_json()
-    if data and "message" in data:
-        chat_id = data["message"]["chat"]["id"]
-        text = data["message"]["text"].lower()
-        user_id = f"telegram:{chat_id}"
-        response_messages = process_message(user_id, text, amadeus_service)
+    print(f"[Telegram] Received Telegram webhook request")
+    try:
+        data = request.get_json()
+        print(f"[Telegram] Webhook data: {data}")
+        
+        if not data:
+            print(f"[Telegram] No data in webhook")
+            return "OK", 200
+            
+        message = data.get("message", {})
+        if not message:
+            print(f"[Telegram] No message in webhook data")
+            return "OK", 200
+            
+        user_id = f"telegram:{message.get('chat', {}).get('id')}"
+        incoming_msg = message.get('text', '')
+        print(f"[Telegram] Processing message from {user_id}: '{incoming_msg[:50]}...'")
+        
+        response_messages = process_message(user_id, incoming_msg, amadeus_service)
+        print(f"[Telegram] Process message returned {len(response_messages)} responses")
+        
+        # Send responses via Telegram
         for msg in response_messages:
-            send_message(chat_id, msg)
-    return "OK", 200
+            send_message(user_id.split(':')[1], msg)
+            
+        return "OK", 200
+    except Exception as e:
+        print(f"[Telegram] ERROR in telegram_webhook: {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
+        return "ERROR", 500
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))

@@ -89,8 +89,17 @@ def get_ai_response(user_message: str, conversation_history: list, state: str) -
             print(f"[AI Service] API Error Status Code: {e.status_code}")
         elif hasattr(e, 'message'):
             print(f"[AI Service] API Error Message: {e.message}")
-            
-        return "Sorry, I'm having trouble connecting to my brain right now. Please try again in a moment.", conversation_history
+        
+        # Provide a fallback response instead of generic error
+        if state == "GATHERING_INFO":
+            fallback_response = "I'm here to help you book a flight! To get started, please tell me where you'd like to go and when you'd like to travel."
+        elif state == "AWAITING_CONFIRMATION":
+            fallback_response = "I'm having trouble processing that right now. Could you please confirm if the flight details I showed you are correct? Just reply with 'yes' or 'no'."
+        else:
+            fallback_response = "I'm experiencing some technical difficulties, but I'm still here to help! Please try rephrasing your request."
+        
+        conversation_history.append({"role": "assistant", "content": fallback_response})
+        return fallback_response, conversation_history
 
 def extract_traveler_details(message: str) -> dict:
     """
