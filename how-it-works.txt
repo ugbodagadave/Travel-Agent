@@ -37,4 +37,14 @@ The moment the booking is confirmed, you receive a final message on WhatsApp or 
 ### How Does It Remember Me?
 
 The agent can have conversations with many users at once and never gets confused. This is because it saves the context of your specific conversation in a fast, in-memory database.
-*   **Technology Used:** A **Redis** database (hosted on Render) securely stores your conversation history, so you can even pause and come back later without starting over. 
+*   **Technology Used:** A **Redis** database (hosted on Render) securely stores your conversation history, so you can even pause and come back later without starting over.
+
+---
+### Reliability & Error Handling
+
+The system is designed to be reliable and provide a good experience even when things go wrong:
+
+*   **Smart Error Handling:** If there are technical issues, the agent provides helpful responses instead of generic error messages
+*   **Graceful Failures:** The system continues working even if some components are temporarily unavailable
+*   **Comprehensive Monitoring:** Detailed logging and health checks ensure issues are quickly identified and resolved
+*   **User-Friendly:** You'll always get a meaningful response, even during technical difficulties 

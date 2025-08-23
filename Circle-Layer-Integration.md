@@ -6,6 +6,8 @@ This document provides an exhaustive technical explanation of how Circle Layer b
 
 Circle Layer integration enables users to pay for flight bookings using the native CLAYER token on the Circle Layer blockchain. This implementation represents a significant enhancement to the payment system, offering a Web3-native payment option alongside traditional Stripe card payments and USDC stablecoin transfers.
 
+**CRITICAL SECURITY FIX**: The system now includes robust payment validation to prevent false confirmations. Each payment uses a unique deposit address and tracks balance increases rather than absolute balances.
+
 ## Architecture & Design Decisions
 
 ### Native Token vs ERC-20 Token
@@ -15,6 +17,14 @@ The integration uses **native CLAYER tokens** rather than ERC-20 tokens, which p
 - **Simplified Logic**: Direct blockchain balance checking instead of contract calls
 - **Guaranteed Faucet Availability**: Circle Layer testnet faucets provide native CLAYER tokens
 - **Reduced Complexity**: Eliminates token approval and contract interaction overhead
+
+### Payment Validation & Security
+**NEW**: The system implements comprehensive payment validation to prevent false confirmations:
+
+- **Unique Address Generation**: Each payment gets a unique deposit address (index 0, 1, 2, etc.)
+- **Balance Tracking**: Initial balance is recorded before payment request
+- **Balance Increase Validation**: Only confirms payment when balance increases by expected amount
+- **Payment Tracking**: Redis-based tracking system ensures payment integrity
 
 ### Technical Specifications
 
@@ -43,6 +53,11 @@ CIRCLE_LAYER_MERCHANT_MNEMONIC=your_mnemonic_here
 CIRCLE_LAYER_MIN_CONFIRMATIONS=3
 CIRCLE_LAYER_POLL_INTERVAL=15
 CIRCLE_LAYER_EXPLORER_BASE_URL=https://explorer-testnet.circlelayer.com
+
+# Required for all payment methods
+IO_API_KEY=your_io_intelligence_api_key
+REDIS_URL=your_redis_connection_string
+ADMIN_SECRET_KEY=your_admin_secret_for_redis_management
 ```
 
 **Key Changes Made:**
@@ -50,6 +65,7 @@ CIRCLE_LAYER_EXPLORER_BASE_URL=https://explorer-testnet.circlelayer.com
 - **Decimals**: Confirmed at `18` for native token precision
 - **Token Address**: Commented out as native tokens don't require contract addresses
 - **Amount**: Set to `1.0` CLAYER for testing
+- **Error Handling**: Added comprehensive fallback mechanisms
 
 ### Core Logic Implementation
 
@@ -63,23 +79,37 @@ elif "circle layer" in incoming_msg.lower() or "clayer" in incoming_msg.lower():
         # Native token configuration
         token_symbol = os.getenv("CIRCLE_LAYER_TOKEN_SYMBOL", "CLAYER")
         decimals = int(os.getenv("CIRCLE_LAYER_TOKEN_DECIMALS", "18"))
-        token_address = None  # Native token - no contract address
+        token_address = None  # Native token - no contract address needed
         
         # Calculate amount in wei (smallest unit)
         amount_in_tokens = 1.0  # 1 CLAYER
         amount_units = int(amount_in_tokens * (10 ** decimals))
         
-        # Generate deposit address
-        deposit = circlelayer_service.CircleLayerService.create_deposit_address(index=0)
-        deposit_address = deposit.get("address")
+        # Get unique address index to prevent reuse
+        address_index = get_next_address_index()
         
-        # Save payment details for verification
-        flight_details["circlelayer"] = {
-            "address": deposit_address,
-            "token_address": token_address,  # None for native token
-            "amount": amount_units,
-            "decimals": decimals,
-        }
+        # Derive a unique deposit address
+        deposit = circlelayer_service.CircleLayerService.create_deposit_address(index=address_index)
+        deposit_address = deposit.get("address")
+
+        if deposit_address:
+            # Get initial balance to track payment increase
+            try:
+                circlelayer_svc = circlelayer_service.CircleLayerService()
+                initial_balance = circlelayer_svc.check_native_balance(deposit_address)
+                print(f"[{user_id}] - INFO: Initial balance at {deposit_address}: {initial_balance} wei")
+            except Exception as e:
+                print(f"[{user_id}] - WARNING: Could not get initial balance: {e}")
+                initial_balance = 0
+            
+            # Save payment tracking information
+            save_circlelayer_payment_info(
+                user_id=user_id,
+                address=deposit_address,
+                initial_balance=initial_balance,
+                expected_amount=amount_units,
+                address_index=address_index
+            )
 ```
 
 #### Amount Calculation
@@ -155,15 +185,39 @@ def poll_circlelayer_payment_task(user_id, address, token_address, amount_units,
         amount_units: Expected amount in wei
         decimals: Token decimals (18 for CLAYER)
     """
-    # Implementation details...
+    # Get payment tracking information
+    payment_info = get_circlelayer_payment_info(user_id)
+    if not payment_info:
+        print(f"[{user_id}] - ERROR: No payment tracking information found for {user_id}")
+        return
+    
+    initial_balance = payment_info.get("initial_balance", 0)
+    expected_amount = payment_info.get("expected_amount", amount_units)
+    
+    # Check balance increase instead of absolute balance
+    while time.time() - start < timeout_seconds:
+        try:
+            current_balance = svc.check_native_balance(address, min_confirmations)
+            balance_increase = current_balance - initial_balance
+            
+            # Only confirm if balance increased by the expected amount
+            if balance_increase >= expected_amount:
+                print(f"[{user_id}] - INFO: Native token payment confirmed: balance increased by {balance_increase} wei")
+                
+                # Clear payment tracking data
+                clear_circlelayer_payment_info(user_id)
+                
+                handle_successful_payment(user_id)
+                return
 ```
 
 #### Polling Logic
-1. **Initial Check**: Verifies address generation
+1. **Initial Check**: Verifies address generation and payment tracking setup
 2. **Balance Monitoring**: Checks native CLAYER balance every 15 seconds
-3. **Confirmation Threshold**: Waits for 3 block confirmations
-4. **Payment Verification**: Validates exact amount received
-5. **Success Handling**: Triggers ticket generation upon confirmation
+3. **Balance Increase Validation**: Tracks balance increase from initial state
+4. **Confirmation Threshold**: Waits for 3 block confirmations
+5. **Payment Verification**: Validates exact amount received as balance increase
+6. **Success Handling**: Triggers ticket generation upon confirmation
 
 ### Security Considerations
 
@@ -172,7 +226,10 @@ def poll_circlelayer_payment_task(user_id, address, token_address, amount_units,
 - Each payment gets a unique address (index-based)
 - No private keys exposed in application code
 
-#### Transaction Verification
+#### Payment Validation
+- **NEW**: Tracks initial balance before payment request
+- **NEW**: Only confirms payment when balance increases by expected amount
+- **NEW**: Uses unique addresses to prevent reuse attacks
 - Validates exact amount received
 - Confirms recipient address matches generated deposit
 - Checks transaction status on blockchain
@@ -209,52 +266,14 @@ pytest tests/test_core_logic.py::test_awaiting_payment_selection_circle_layer -v
 pytest -v
 ```
 
-### Production Considerations
-
-#### Scaling
-- **Address Pool Management**: Implement address rotation for high volume
-- **RPC Redundancy**: Multiple RPC endpoints for reliability
-- **Rate Limiting**: Respect blockchain RPC rate limits
-
-#### Monitoring
-- **Payment Tracking**: Log all payment attempts
-- **Error Alerts**: Monitor failed transactions
-- **Performance Metrics**: Track confirmation times
-
-#### Future Enhancements
-- **Multi-chain Support**: Extend to other EVM-compatible chains
-- **Gas Optimization**: Dynamic gas price estimation
-- **Batch Processing**: Group multiple payments
-- **Analytics**: Payment success rate tracking
-
-### Troubleshooting Guide
-
-#### Common Issues
-
-1. **"Circle Layer token address is not configured"**
-   - Solution: Ensure `CIRCLE_LAYER_TOKEN_ADDRESS` is commented out in `.env`
-
-2. **"Could not generate Circle Layer address"**
-   - Solution: Verify merchant mnemonic is correctly configured
-
-3. **Payment not detected**
-   - Solution: Check RPC connectivity and confirmation settings
-
-4. **Test faucet issues**
-   - Solution: Use Circle Layer testnet faucet at https://faucet.circlelayer.com
-
-#### Debug Commands
-```bash
-# Check Circle Layer service connectivity
-python -c "from app.circlelayer_service import CircleLayerService; print(CircleLayerService.test_connection())"
-
-# Verify address generation
-python -c "from app.circlelayer_service import CircleLayerService; print(CircleLayerService.create_deposit_address())"
-```
-
 ## Summary
 
 The Circle Layer integration successfully provides a Web3-native payment option using the native CLAYER token. The implementation prioritizes simplicity, security, and user experience while maintaining full compatibility with the existing system architecture. All 77 tests pass, confirming the robustness of the integration.
+
+**CRITICAL SECURITY IMPROVEMENT**: The system now prevents false payment confirmations by:
+- Using unique deposit addresses for each payment
+- Tracking balance increases rather than absolute balances
+- Implementing comprehensive payment validation
 
 The system is now ready for Circle Layer testnet testing with 1 CLAYER payments, providing users with a seamless blockchain payment experience alongside traditional payment methods.
 
@@ -265,4 +284,55 @@ The system is now ready for Circle Layer testnet testing with 1 CLAYER payments,
 ✅ **Simpler user experience** - Users just send CLAYER to the provided address  
 ✅ **Direct blockchain transactions** - No smart contract interactions needed  
 ✅ **Robust payment monitoring** - Native balance checking with confirmation thresholds  
-✅ **Full test coverage** - All 77 tests passing with comprehensive validation
+✅ **Full test coverage** - All 77 tests passing with comprehensive validation  
+✅ **SECURITY FIXED** - Prevents false confirmations with unique addresses and balance tracking  
+
+### Deployment & Error Handling
+
+#### Robust Error Handling
+The integration includes comprehensive error handling to ensure reliability:
+
+- **Redis Connection Failures**: System continues working even when Redis is unavailable
+- **AI Service Fallbacks**: Meaningful responses instead of generic error messages
+- **Session Management**: Graceful degradation when session storage fails
+- **Payment Monitoring**: Robust polling with timeout and retry mechanisms
+
+#### Production Deployment Features
+- **Comprehensive Logging**: Detailed debug messages for troubleshooting
+- **Health Check Endpoint**: Real-time system status monitoring
+- **Environment Variable Validation**: Clear error messages for missing configuration
+- **E2E Testing**: Complete test suite for deployment validation
+
+#### Troubleshooting Tools
+- **Health Check**: `GET /health` - Shows system status and environment variables
+- **Redis Management**: `GET /admin/clear-redis/{secret}` - Clear Redis database
+- **E2E Test Script**: `python test_e2e_deployment.py` - Comprehensive local testing
+
+### Environment Configuration
+
+The integration requires specific environment variables in `.env`:
+
+```bash
+# Circle Layer Integration
+CIRCLE_LAYER_RPC_URL=https://testnet-rpc.circlelayer.com
+CIRCLE_LAYER_CHAIN_ID=28525
+CIRCLE_LAYER_TOKEN_SYMBOL=CLAYER
+CIRCLE_LAYER_TOKEN_DECIMALS=18
+# CIRCLE_LAYER_TOKEN_ADDRESS=0x5Cec57B73170cc116447aCA8657E94319660b63a  # Commented out for native tokens
+CIRCLE_LAYER_MERCHANT_MNEMONIC=your_mnemonic_here
+CIRCLE_LAYER_MIN_CONFIRMATIONS=3
+CIRCLE_LAYER_POLL_INTERVAL=15
+CIRCLE_LAYER_EXPLORER_BASE_URL=https://explorer-testnet.circlelayer.com
+
+# Required for all payment methods
+IO_API_KEY=your_io_intelligence_api_key
+REDIS_URL=your_redis_connection_string
+ADMIN_SECRET_KEY=your_admin_secret_for_redis_management
+```
+
+**Key Changes Made:**
+- **Token Symbol**: Updated to `CLAYER` for native token
+- **Decimals**: Confirmed at `18` for native token precision
+- **Token Address**: Commented out as native tokens don't require contract addresses
+- **Amount**: Set to `1.0` CLAYER for testing
+- **Error Handling**: Added comprehensive fallback mechanisms

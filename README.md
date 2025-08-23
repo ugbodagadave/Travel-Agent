@@ -15,6 +15,7 @@ This project is an AI-powered travel agent accessible via WhatsApp and Telegram.
   - **Circle Layer (Native CLAYER)**: Generates deterministic deposit addresses for native token payments. Payment confirmation is handled by blockchain balance monitoring with configurable confirmation thresholds.
 - **Persistent State**: Maintains conversation state for each user in a Redis database.
 - **Responsive & Resilient Architecture**: Long-running tasks like flight searches and payment polling are run in background threads, so the main application is never blocked and can recover from external service delays.
+- **Production Reliability**: Comprehensive error handling ensures the system continues working even when Redis or other components fail, providing meaningful responses instead of generic error messages.
 
 ## Core Technologies
 - **Programming Language:** Python 3.11
@@ -144,6 +145,48 @@ To ensure everything is configured correctly, run the test suite:
 ```bash
 pytest -sv
 ```
+
+## Troubleshooting & Debugging
+
+### Health Check
+Check system status and environment variables:
+```bash
+curl https://your-app.onrender.com/health
+```
+
+### E2E Testing
+Run comprehensive end-to-end tests locally:
+```bash
+python test_e2e_deployment.py
+```
+
+### Redis Management
+Clear Redis database (requires `ADMIN_SECRET_KEY`):
+```
+https://your-app.onrender.com/admin/clear-redis/YOUR_SECRET_KEY
+```
+
+### Common Issues & Solutions
+
+#### "Sorry, I'm having trouble connecting to my brain right now"
+- **Cause**: AI service or Redis connection failure
+- **Solution**: Check Render logs for detailed error messages
+- **Prevention**: System now provides helpful fallback responses
+
+#### Redis Connection Errors
+- **Cause**: Redis service unavailable or misconfigured
+- **Solution**: Verify `REDIS_URL` in Render environment variables
+- **Prevention**: System continues working with in-memory state
+
+#### Missing Environment Variables
+- **Cause**: Required API keys not set in Render
+- **Solution**: Add missing variables in Render Environment tab
+- **Detection**: Health check endpoint shows which variables are missing
+
+#### Payment Processing Issues
+- **Cause**: Payment service configuration problems
+- **Solution**: Verify payment service API keys and webhook URLs
+- **Monitoring**: Check payment polling logs for specific errors
 
 ## Running Locally
 To run the application locally, you just need to start the web server. Make sure you have a local Redis instance running first.

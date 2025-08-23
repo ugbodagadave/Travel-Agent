@@ -360,23 +360,48 @@ def test_awaiting_payment_selection_usdc(monkeypatch):
 @patch("app.core_logic.save_session")
 @patch("threading.Thread")
 @patch("app.core_logic.save_evm_mapping")
-@patch("app.core_logic.circlelayer_service.CircleLayerService.create_deposit_address", return_value={"address": "0xDEPOSIT"})
-def test_awaiting_payment_selection_circle_layer(mock_create_deposit, mock_save_evm, mock_thread, mock_save_session, mock_load_session):
+@patch("app.core_logic.save_circlelayer_payment_info")
+@patch("app.core_logic.get_next_address_index", return_value=0)
+@patch("app.core_logic.circlelayer_service.CircleLayerService")
+def test_awaiting_payment_selection_circle_layer(mock_circlelayer_service, mock_get_index, mock_save_payment_info, mock_save_evm, mock_thread, mock_save_session, mock_load_session):
     user_id = "test_user_clayer"
     selected_flight = [{"price": {"total": "200.00", "currency": "USD"}}]
     mock_load_session.return_value = ("AWAITING_PAYMENT_SELECTION", [], selected_flight, {})
+    
+    # Mock the CircleLayerService instance and its methods
+    mock_service_instance = MagicMock()
+    mock_service_instance.check_native_balance.return_value = 0
+    mock_circlelayer_service.return_value = mock_service_instance
+    
+    # Mock the create_deposit_address class method
+    mock_deposit = MagicMock()
+    mock_deposit.get.return_value = "0xDEPOSIT"
+    mock_circlelayer_service.create_deposit_address.return_value = mock_deposit
 
     responses = process_message(user_id, "Circle Layer", MagicMock())
 
     assert len(responses) == 2
     assert "please send exactly 1.00 CLAYER" in responses[0]
     assert responses[1] == "0xDEPOSIT"
+    
+    # Verify payment tracking was saved
+    mock_save_payment_info.assert_called_once_with(
+        user_id=user_id,
+        address="0xDEPOSIT",
+        initial_balance=0,
+        expected_amount=1000000000000000000,
+        address_index=0
+    )
+    
+    # Verify session was saved with new fields
     mock_save_session.assert_called_with(user_id, "AWAITING_CIRCLE_LAYER_PAYMENT", [], selected_flight, {
         'circlelayer': {
             'address': '0xDEPOSIT',
             'token_address': None,  # Native token - no contract address
             'amount': 1000000000000000000,  # 1 CLAYER in wei (18 decimals)
-            'decimals': 18
+            'decimals': 18,
+            'address_index': 0,
+            'initial_balance': 0
         }
     })
 

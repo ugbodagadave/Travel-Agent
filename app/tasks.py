@@ -177,6 +177,7 @@ def poll_circlelayer_payment_task(user_id: str, address: str, token_address: str
     try:
         from app.circlelayer_service import CircleLayerService
         from app.main import handle_successful_payment
+        from app.new_session_manager import get_circlelayer_payment_info, clear_circlelayer_payment_info
     except Exception as e:
         print(f"[{user_id}] - ERROR: Unable to import CircleLayerService or handler: {e}")
         return
@@ -192,16 +193,35 @@ def poll_circlelayer_payment_task(user_id: str, address: str, token_address: str
     print(f"[{user_id}] - INFO: Starting Circle Layer polling for {amount_units} smallest units at {address}.")
     start = time.time()
 
+    # Get payment tracking information
+    payment_info = get_circlelayer_payment_info(user_id)
+    if not payment_info:
+        print(f"[{user_id}] - ERROR: No payment tracking information found for {user_id}")
+        return
+    
+    initial_balance = payment_info.get("initial_balance", 0)
+    expected_amount = payment_info.get("expected_amount", amount_units)
+    address_index = payment_info.get("address_index", 0)
+    
+    print(f"[{user_id}] - INFO: Payment tracking - Initial: {initial_balance} wei, Expected: {expected_amount} wei, Address Index: {address_index}")
+
     # Check if this is a native token payment
     if token_address is None:
-        # Native token payment - check balance directly
+        # Native token payment - check balance increase
         while time.time() - start < timeout_seconds:
             try:
                 current_balance = svc.check_native_balance(address, min_confirmations)
-                print(f"[{user_id}] - DEBUG: Current native balance: {current_balance} wei, target: {amount_units} wei")
+                balance_increase = current_balance - initial_balance
                 
-                if current_balance >= amount_units:
-                    print(f"[{user_id}] - INFO: Native token payment confirmed: {current_balance} >= {amount_units}.")
+                print(f"[{user_id}] - DEBUG: Current balance: {current_balance} wei, Initial: {initial_balance} wei, Increase: {balance_increase} wei, Target: {expected_amount} wei")
+                
+                # Only confirm if balance increased by the expected amount
+                if balance_increase >= expected_amount:
+                    print(f"[{user_id}] - INFO: Native token payment confirmed: balance increased by {balance_increase} wei (>= {expected_amount} wei)")
+                    
+                    # Clear payment tracking data
+                    clear_circlelayer_payment_info(user_id)
+                    
                     try:
                         handle_successful_payment(user_id)
                     except Exception as e:
@@ -212,6 +232,8 @@ def poll_circlelayer_payment_task(user_id: str, address: str, token_address: str
                 print(f"[{user_id}] - WARNING: Native balance check error: {e}")
                 
             time.sleep(poll_interval)
+
+        print(f"[{user_id}] - WARNING: Circle Layer polling timed out after {timeout_seconds}s for {address}.")
     else:
         # ERC-20 token payment - use existing transfer event logic
         to_checksum = svc.w3.to_checksum_address  # type: ignore
@@ -244,6 +266,10 @@ def poll_circlelayer_payment_task(user_id: str, address: str, token_address: str
 
                 if total >= target_amount:
                     print(f"[{user_id}] - INFO: ERC-20 token payment met: {total} >= {target_amount}.")
+                    
+                    # Clear payment tracking data
+                    clear_circlelayer_payment_info(user_id)
+                    
                     try:
                         handle_successful_payment(user_id)
                     except Exception as e:

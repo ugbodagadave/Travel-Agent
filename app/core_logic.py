@@ -7,7 +7,7 @@ from app.payment_service import create_checkout_session
 from app.tasks import search_flights_task, poll_usdc_payment_task, poll_circlelayer_payment_task
 from app.circle_service import CircleService
 from app.currency_service import CurrencyService
-from app.new_session_manager import save_wallet_mapping, save_evm_mapping
+from app.new_session_manager import save_wallet_mapping, save_evm_mapping, get_next_address_index, save_circlelayer_payment_info
 import app.circlelayer_service as circlelayer_service
 from dateutil import parser
 
@@ -352,11 +352,32 @@ def process_message(user_id, incoming_msg, amadeus_service: AmadeusService):
                 amount_in_tokens = 1.0  # 1 CLAYER
                 amount_units = int(amount_in_tokens * (10 ** decimals))
                 
-                # Derive a deposit address (index 0 for testing)
-                deposit = circlelayer_service.CircleLayerService.create_deposit_address(index=0)
+                # Get unique address index to prevent reuse
+                address_index = get_next_address_index()
+                
+                # Derive a unique deposit address
+                deposit = circlelayer_service.CircleLayerService.create_deposit_address(index=address_index)
                 deposit_address = deposit.get("address")
 
                 if deposit_address:
+                    # Get initial balance to track payment increase
+                    try:
+                        circlelayer_svc = circlelayer_service.CircleLayerService()
+                        initial_balance = circlelayer_svc.check_native_balance(deposit_address)
+                        print(f"[{user_id}] - INFO: Initial balance at {deposit_address}: {initial_balance} wei")
+                    except Exception as e:
+                        print(f"[{user_id}] - WARNING: Could not get initial balance: {e}")
+                        initial_balance = 0
+                    
+                    # Save payment tracking information
+                    save_circlelayer_payment_info(
+                        user_id=user_id,
+                        address=deposit_address,
+                        initial_balance=initial_balance,
+                        expected_amount=amount_units,
+                        address_index=address_index
+                    )
+                    
                     save_evm_mapping(deposit_address, user_id)
 
                     # Persist details for verification
@@ -365,6 +386,8 @@ def process_message(user_id, incoming_msg, amadeus_service: AmadeusService):
                         "token_address": token_address,  # None for native token
                         "amount": amount_units,
                         "decimals": decimals,
+                        "address_index": address_index,
+                        "initial_balance": initial_balance,
                     }
                     state = "AWAITING_CIRCLE_LAYER_PAYMENT"
                     save_session(user_id, state, conversation_history, [selected_flight], flight_details)
@@ -382,6 +405,7 @@ def process_message(user_id, incoming_msg, amadeus_service: AmadeusService):
                             args=(user_id, deposit_address, token_address, amount_units, decimals),
                         )
                         poll_thread.start()
+                        print(f"[{user_id}] - INFO: Started Circle Layer polling for payment at {deposit_address} (index {address_index})")
                     except Exception as e:
                         print(f"[{user_id}] - ERROR: Could not start Circle Layer polling thread: {e}")
                 else:

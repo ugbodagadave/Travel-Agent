@@ -196,4 +196,38 @@ class CircleLayerService:
                 }
         except Exception as e:
             print(f"[CircleLayerService] ERROR getting transaction status: {e}")
-        return None 
+        return None
+
+    def get_address_info(self, address: str) -> Dict:
+        """Get comprehensive address information including balance and transaction count.
+        
+        Args:
+            address: The address to get information for
+            
+        Returns:
+            Dictionary with address information
+        """
+        try:
+            self.connect()
+            checksum_addr = self.w3.to_checksum_address(address)
+            
+            # Get current balance
+            balance = self.w3.eth.get_balance(checksum_addr)
+            
+            # Get transaction count (nonce)
+            nonce = self.w3.eth.get_transaction_count(checksum_addr)
+            
+            return {
+                "address": checksum_addr,
+                "balance": balance,
+                "nonce": nonce,
+                "balance_eth": self.w3.from_wei(balance, 'ether')
+            }
+        except Exception as e:
+            print(f"[CircleLayerService] ERROR getting address info: {e}")
+            return {
+                "address": address,
+                "balance": 0,
+                "nonce": 0,
+                "balance_eth": 0
+            } 
