@@ -39,10 +39,10 @@ def test_telegram_webhook_uses_process_message(mock_send_message, mock_process_m
     assert response.status_code == 200
     
     # Check that process_message was called correctly
-    mock_process_message.assert_called_once_with("telegram:987654321", "hello telegram", amadeus_service)
+    mock_process_message.assert_called_once_with("telegram:987654321", "Hello Telegram", amadeus_service)
     
     # Check that send_message was called with the result
-    mock_send_message.assert_called_once_with(987654321, "Processed response") 
+    mock_send_message.assert_called_once_with("987654321", "Processed response") 
 
 @patch('requests.post')
 def test_send_pdf(mock_post):

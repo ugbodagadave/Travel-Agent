@@ -156,3 +156,131 @@ def poll_usdc_payment_task(user_id, intent_id, poll_interval=30, timeout_seconds
         time.sleep(poll_interval)
 
     print(f"[{user_id}] - WARNING: Polling timed out for payment intent {intent_id} after {timeout_seconds} seconds.") 
+
+# -----------------------------------------------
+# Circle Layer Payment Polling Task
+# -----------------------------------------------
+
+def poll_circlelayer_payment_task(user_id: str, address: str, token_address: str, amount_units: float, decimals: int, poll_interval: int = None, min_confirmations: int = None, timeout_seconds: int = 3600):
+    """Poll Circle Layer for native token payments to `address` until `amount_units` is met.
+
+    Args:
+        user_id: platform-specific id (e.g., telegram:123)
+        address: deposit address to receive funds
+        token_address: None for native tokens, contract address for ERC-20 tokens
+        amount_units: target amount in smallest units (e.g., wei for native tokens)
+        decimals: token decimals (e.g., 18 for native tokens)
+        poll_interval: seconds between polls (default from env CIRCLE_LAYER_POLL_INTERVAL or 15)
+        min_confirmations: required confirmations (default from env CIRCLE_LAYER_MIN_CONFIRMATIONS or 3)
+        timeout_seconds: stop polling after this many seconds
+    """
+    try:
+        from app.circlelayer_service import CircleLayerService
+        from app.main import handle_successful_payment
+        from app.new_session_manager import get_circlelayer_payment_info, clear_circlelayer_payment_info
+    except Exception as e:
+        print(f"[{user_id}] - ERROR: Unable to import CircleLayerService or handler: {e}")
+        return
+
+    svc = CircleLayerService()
+    
+    # Defaults
+    if poll_interval is None:
+        poll_interval = int(os.getenv("CIRCLE_LAYER_POLL_INTERVAL", "15"))
+    if min_confirmations is None:
+        min_confirmations = int(os.getenv("CIRCLE_LAYER_MIN_CONFIRMATIONS", "3"))
+
+    print(f"[{user_id}] - INFO: Starting Circle Layer polling for {amount_units} smallest units at {address}.")
+    start = time.time()
+
+    # Get payment tracking information
+    payment_info = get_circlelayer_payment_info(user_id)
+    if not payment_info:
+        print(f"[{user_id}] - ERROR: No payment tracking information found for {user_id}")
+        return
+    
+    initial_balance = payment_info.get("initial_balance", 0)
+    expected_amount = payment_info.get("expected_amount", amount_units)
+    address_index = payment_info.get("address_index", 0)
+    
+    print(f"[{user_id}] - INFO: Payment tracking - Initial: {initial_balance} wei, Expected: {expected_amount} wei, Address Index: {address_index}")
+
+    # Check if this is a native token payment
+    if token_address is None:
+        # Native token payment - check balance increase
+        while time.time() - start < timeout_seconds:
+            try:
+                current_balance = svc.check_native_balance(address, min_confirmations)
+                balance_increase = current_balance - initial_balance
+                
+                print(f"[{user_id}] - DEBUG: Current balance: {current_balance} wei, Initial: {initial_balance} wei, Increase: {balance_increase} wei, Target: {expected_amount} wei")
+                
+                # Only confirm if balance increased by the expected amount
+                if balance_increase >= expected_amount:
+                    print(f"[{user_id}] - INFO: Native token payment confirmed: balance increased by {balance_increase} wei (>= {expected_amount} wei)")
+                    
+                    # Clear payment tracking data
+                    clear_circlelayer_payment_info(user_id)
+                    
+                    try:
+                        handle_successful_payment(user_id)
+                    except Exception as e:
+                        print(f"[{user_id}] - ERROR calling handle_successful_payment: {e}")
+                    return
+                    
+            except Exception as e:
+                print(f"[{user_id}] - WARNING: Native balance check error: {e}")
+                
+            time.sleep(poll_interval)
+
+        print(f"[{user_id}] - WARNING: Circle Layer polling timed out after {timeout_seconds}s for {address}.")
+    else:
+        # ERC-20 token payment - use existing transfer event logic
+        to_checksum = svc.w3.to_checksum_address  # type: ignore
+        to_addr = to_checksum(address)
+        target_amount = int(round(amount_units * (10 ** decimals)))
+
+        last_from = max(0, svc.get_confirmed_block(min_confirmations) - 2000)
+
+        # Build event and filter parameters lazily each loop for updated blocks
+        contract = svc.erc20_contract(token_address)
+        Transfer = contract.events.Transfer
+
+        while time.time() - start < timeout_seconds:
+            try:
+                to_block = svc.get_confirmed_block(min_confirmations)
+                logs = svc.w3.eth.get_logs({
+                    "fromBlock": last_from,
+                    "toBlock": to_block,
+                    "address": svc.w3.to_checksum_address(token_address),
+                })
+                total = 0
+                # Decode and sum transfers to our address
+                for log in logs:
+                    try:
+                        ev = Transfer().process_log(log)
+                        if ev["args"]["to"] == to_addr:
+                            total += int(ev["args"]["value"])
+                    except Exception:
+                        continue
+
+                if total >= target_amount:
+                    print(f"[{user_id}] - INFO: ERC-20 token payment met: {total} >= {target_amount}.")
+                    
+                    # Clear payment tracking data
+                    clear_circlelayer_payment_info(user_id)
+                    
+                    try:
+                        handle_successful_payment(user_id)
+                    except Exception as e:
+                        print(f"[{user_id}] - ERROR calling handle_successful_payment: {e}")
+                    return
+
+                last_from = to_block
+            except Exception as e:
+                # Network hiccup / RPC failover; log and keep trying
+                print(f"[{user_id}] - WARNING: ERC-20 token polling error: {e}")
+
+            time.sleep(poll_interval)
+
+    print(f"[{user_id}] - WARNING: Circle Layer polling timed out after {timeout_seconds}s for {address}.") 

@@ -2,6 +2,7 @@ import pytest
 from unittest.mock import MagicMock, patch, ANY
 from app.core_logic import process_message, TRAVEL_CLASSES
 from app.new_session_manager import save_session, load_session
+import os
 
 @pytest.fixture
 def mock_amadeus_service():
@@ -357,6 +358,55 @@ def test_awaiting_payment_selection_usdc(monkeypatch):
 
 @patch("app.core_logic.load_session")
 @patch("app.core_logic.save_session")
+@patch("threading.Thread")
+@patch("app.core_logic.save_evm_mapping")
+@patch("app.core_logic.save_circlelayer_payment_info")
+@patch("app.core_logic.get_next_address_index", return_value=0)
+@patch("app.core_logic.circlelayer_service.CircleLayerService")
+def test_awaiting_payment_selection_circle_layer(mock_circlelayer_service, mock_get_index, mock_save_payment_info, mock_save_evm, mock_thread, mock_save_session, mock_load_session):
+    user_id = "test_user_clayer"
+    selected_flight = [{"price": {"total": "200.00", "currency": "USD"}}]
+    mock_load_session.return_value = ("AWAITING_PAYMENT_SELECTION", [], selected_flight, {})
+    
+    # Mock the CircleLayerService instance and its methods
+    mock_service_instance = MagicMock()
+    mock_service_instance.check_native_balance.return_value = 0
+    mock_circlelayer_service.return_value = mock_service_instance
+    
+    # Mock the create_deposit_address class method
+    mock_deposit = MagicMock()
+    mock_deposit.get.return_value = "0xDEPOSIT"
+    mock_circlelayer_service.create_deposit_address.return_value = mock_deposit
+
+    responses = process_message(user_id, "On-chain", MagicMock())
+
+    assert len(responses) == 2
+    assert "please send exactly 1.00 CLAYER" in responses[0]
+    assert responses[1] == "0xDEPOSIT"
+    
+    # Verify payment tracking was saved
+    mock_save_payment_info.assert_called_once_with(
+        user_id=user_id,
+        address="0xDEPOSIT",
+        initial_balance=0,
+        expected_amount=1000000000000000000,
+        address_index=0
+    )
+    
+    # Verify session was saved with new fields
+    mock_save_session.assert_called_with(user_id, "AWAITING_CIRCLE_LAYER_PAYMENT", [], selected_flight, {
+        'circlelayer': {
+            'address': '0xDEPOSIT',
+            'token_address': None,  # Native token - no contract address
+            'amount': 1000000000000000000,  # 1 CLAYER in wei (18 decimals)
+            'decimals': 18,
+            'address_index': 0,
+            'initial_balance': 0
+        }
+    })
+
+@patch("app.core_logic.load_session")
+@patch("app.core_logic.save_session")
 def test_awaiting_payment_selection_invalid(mock_save_session, mock_load_session):
     """
     Tests an invalid input in the AWAITING_PAYMENT_SELECTION state.
@@ -367,5 +417,40 @@ def test_awaiting_payment_selection_invalid(mock_save_session, mock_load_session
 
     response = process_message(user_id, "Bitcoin", MagicMock())
 
-    assert "I didn't understand. Please reply with 'Card' or 'USDC'." in response[0]
-    mock_save_session.assert_called_once_with(user_id, "AWAITING_PAYMENT_SELECTION", ["history"], selected_flight, {}) 
+    assert "I didn't understand. Please reply with 'Card', 'USDC', or 'On-chain'." in response[0]
+    mock_save_session.assert_called_once_with(user_id, "AWAITING_PAYMENT_SELECTION", ["history"], selected_flight, {})
+
+@patch("app.core_logic.load_session")
+@patch("app.core_logic.save_session")
+@patch("threading.Thread")
+@patch("app.core_logic.save_evm_mapping")
+@patch("app.core_logic.save_circlelayer_payment_info")
+@patch("app.core_logic.get_next_address_index", return_value=0)
+@patch("app.core_logic.circlelayer_service.CircleLayerService")
+def test_awaiting_payment_selection_onchain_case_insensitive(mock_circlelayer_service, mock_get_index, mock_save_payment_info, mock_save_evm, mock_thread, mock_save_session, mock_load_session):
+    """
+    Tests that "on-chain" payment selection works with different case variations.
+    """
+    user_id = "test_user_onchain_case"
+    selected_flight = [{"price": {"total": "200.00", "currency": "USD"}}]
+    mock_load_session.return_value = ("AWAITING_PAYMENT_SELECTION", [], selected_flight, {})
+    
+    # Mock the CircleLayerService instance and its methods
+    mock_service_instance = MagicMock()
+    mock_service_instance.check_native_balance.return_value = 0
+    mock_circlelayer_service.return_value = mock_service_instance
+    
+    # Mock the create_deposit_address class method
+    mock_deposit = MagicMock()
+    mock_deposit.get.return_value = "0xDEPOSIT"
+    mock_circlelayer_service.create_deposit_address.return_value = mock_deposit
+
+    # Test different case variations
+    test_inputs = ["on-chain", "ON-CHAIN", "On-Chain", "on-chain", "ON-CHAIN"]
+    
+    for test_input in test_inputs:
+        responses = process_message(user_id, test_input, MagicMock())
+        
+        assert len(responses) == 2, f"Should return two messages for input '{test_input}'"
+        assert "please send exactly 1.00 CLAYER" in responses[0], f"Should contain CLAYER message for input '{test_input}'"
+        assert responses[1] == "0xDEPOSIT", f"Should return deposit address for input '{test_input}'" 

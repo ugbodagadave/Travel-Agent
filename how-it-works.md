@@ -70,13 +70,13 @@ This is the most critical part of the architecture.
 
 #### Step 5: Payment and Itinerary Delivery
 
-This is the final part of the journey, which now offers two distinct paths: traditional card payment (Stripe) and cryptocurrency (USDC).
+This is the final part of the journey, which now offers three distinct paths: traditional card payment (Stripe), cryptocurrency (USDC), and native blockchain tokens (Circle Layer).
 
 1.  **User Selects Flight:** The user receives the list of flights and replies with the number of their choice (e.g., "1").
 
 2.  **Payment Method Selection (`app/core_logic.py`):**
     *   The system transitions the user's state to `AWAITING_PAYMENT_SELECTION`.
-    *   It sends the message: "You've selected a great flight. How would you like to pay? (Reply with 'Card' or 'USDC')"
+    *   It sends the message: "You've selected a great flight. How would you like to pay? (Reply with 'Card', 'USDC', or 'On-chain')"
 
 ---
 ##### Path A: Paying with a Card (Stripe)
@@ -99,6 +99,19 @@ This is the final part of the journey, which now offers two distinct paths: trad
     *   As soon as the address is sent to the user, a new background thread is started to run the `poll_usdc_payment_task`.
     *   The main application's work is done for now, and it can respond to other users.
     *   **NOTE FOR TESTING:** To work with the limitations of the [Circle Testnet Faucet](https://faucet.circle.com/), the application currently **ignores the real flight price** for USDC payments and always requests **10.00 USDC**.
+
+---
+##### Path C: Paying with Circle Layer (Native CLAYER Token)
+
+1.  **User Selects Circle Layer:** The user replies "On-chain" (or "circle layer", "clayer", "circlelayer" for backward compatibility).
+2.  **Unique Address Generation (`app/circlelayer_service.py`):** The system generates a unique, deterministic deposit address using the merchant's mnemonic and an incrementing index to prevent address reuse.
+3.  **Initial Balance Recording:** The system records the initial balance of the deposit address before requesting payment to track balance increases.
+4.  **User Pays:** The user is sent two separate messages: one with instructions to send exactly 1.00 CLAYER, and a second message containing only the deposit address for easy copying.
+5.  **Start Background Polling (`app/core_logic.py` & `app/tasks.py`):**
+    *   As soon as the address is sent to the user, a new background thread is started to run the `poll_circlelayer_payment_task`.
+    *   The polling task checks the native CLAYER balance of the deposit address every 15 seconds.
+    *   **Security Enhancement:** The system only confirms payment when the balance increases by the expected amount, preventing false confirmations from addresses with existing balances.
+    *   **Native Token Benefits:** Direct blockchain balance checking without smart contract complexity.
 
 ---
 #### Step 6: Confirmation and Ticket Delivery
@@ -147,7 +160,28 @@ This approach ensures that files are persisted reliably and can be accessed from
 *   **Messaging Platforms:** **Twilio** for WhatsApp, **Telegram Bot API** for Telegram.
 *   **Natural Language Understanding:** **IO Intelligence API**.
 *   **Flight Data & Booking:** **Amadeus**.
-*   **Payments:** **Stripe**, **Circle**.
+*   **Payments:** **Stripe**, **Circle**, **Circle Layer blockchain**.
 *   **Session Storage:** **Redis** is the backbone of the system, used for storing conversation state.
 *   **Testing:** **Pytest**.
-*   **Hosting:** **Render**. 
+*   **Hosting:** **Render**.
+
+### Production Reliability Features
+
+#### Error Handling & Resilience
+The system is designed to be resilient and provide a good user experience even when components fail:
+
+- **Redis Failures**: If Redis is unavailable, the system continues working with in-memory conversation state
+- **AI Service Fallbacks**: If the AI service fails, users receive helpful responses instead of generic error messages
+- **Session Management**: Graceful degradation when session storage operations fail
+- **Payment Monitoring**: Robust polling with timeout and retry mechanisms for all payment methods
+
+#### Monitoring & Debugging
+- **Health Check Endpoint**: `GET /health` provides real-time system status
+- **Comprehensive Logging**: Detailed debug messages for troubleshooting deployment issues
+- **Environment Variable Validation**: Clear error messages for missing configuration
+- **E2E Testing**: Complete test suite for deployment validation
+
+#### Admin Tools
+- **Redis Management**: `GET /admin/clear-redis/{secret}` - Clear Redis database for testing
+- **System Status**: Health endpoint shows Redis connection and environment variable status
+- **Error Tracking**: Detailed logs help identify and resolve issues quickly 

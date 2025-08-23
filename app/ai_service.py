@@ -7,6 +7,17 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
+# Verify API key is loaded
+io_api_key = os.getenv("IO_API_KEY")
+if not io_api_key:
+    raise ValueError("IO_API_KEY environment variable is not set. Please check your .env file.")
+
+# Configure the OpenAI client for io.net
+client = openai.OpenAI(
+    api_key=io_api_key,
+    base_url="https://api.intelligence.io.solutions/api/v1/",
+)
+
 # System prompt to instruct the AI Agent on its role and how to behave.
 SYSTEM_PROMPT_GATHER_INFO = """
 You are Flai, a specialized AI assistant for booking flights. Your **only** function is to gather travel information.
@@ -39,12 +50,6 @@ Your task is to determine if the user's response is a confirmation or a correcti
 - If the user's message is a correction (e.g., "no, to Rome"), integrate the correction, restate the updated information, and ask for confirmation again. End this message with the `[INFO_COMPLETE]` token.
 """
 
-# Configure the OpenAI client for io.net
-client = openai.OpenAI(
-    api_key=os.getenv("IO_API_KEY"),
-    base_url="https://api.intelligence.io.solutions/api/v1/",
-)
-
 def get_ai_response(user_message: str, conversation_history: list, state: str) -> (str, list):
     if not conversation_history:
         # Start of a new conversation
@@ -62,6 +67,10 @@ def get_ai_response(user_message: str, conversation_history: list, state: str) -
     conversation_history.append({"role": "user", "content": user_message})
 
     try:
+        print(f"[AI Service] Making API call to IO Intelligence with model: meta-llama/Llama-3.3-70B-Instruct")
+        print(f"[AI Service] API Key available: {'Yes' if io_api_key else 'No'}")
+        print(f"[AI Service] Base URL: https://api.intelligence.io.solutions/api/v1/")
+        
         response = client.chat.completions.create(
             model="meta-llama/Llama-3.3-70B-Instruct",
             messages=conversation_history,
@@ -69,15 +78,28 @@ def get_ai_response(user_message: str, conversation_history: list, state: str) -
         )
         ai_response = response.choices[0].message.content
         conversation_history.append({"role": "assistant", "content": ai_response})
+        print(f"[AI Service] API call successful, response length: {len(ai_response)}")
         return ai_response, conversation_history
     except Exception as e:
+        print(f"[AI Service] Error in API call: {type(e).__name__}: {e}")
         # Check if the exception has response data to get more details
         if hasattr(e, 'response') and e.response and e.response.text:
-            print(f"Error communicating with OpenAI API. Status: {e.response.status_code}, Response: {e.response.text}")
+            print(f"[AI Service] API Error Details - Status: {e.response.status_code}, Response: {e.response.text}")
+        elif hasattr(e, 'status_code'):
+            print(f"[AI Service] API Error Status Code: {e.status_code}")
+        elif hasattr(e, 'message'):
+            print(f"[AI Service] API Error Message: {e.message}")
+        
+        # Provide a fallback response instead of generic error
+        if state == "GATHERING_INFO":
+            fallback_response = "I'm here to help you book a flight! To get started, please tell me where you'd like to go and when you'd like to travel."
+        elif state == "AWAITING_CONFIRMATION":
+            fallback_response = "I'm having trouble processing that right now. Could you please confirm if the flight details I showed you are correct? Just reply with 'yes' or 'no'."
         else:
-            print(f"An unexpected error occurred with the OpenAI API: {e}")
-            
-        return "Sorry, I'm having trouble connecting to my brain right now. Please try again in a moment.", conversation_history
+            fallback_response = "I'm experiencing some technical difficulties, but I'm still here to help! Please try rephrasing your request."
+        
+        conversation_history.append({"role": "assistant", "content": fallback_response})
+        return fallback_response, conversation_history
 
 def extract_traveler_details(message: str) -> dict:
     """

@@ -111,4 +111,23 @@ venv.bak/
 dmypy.json
 
 # Pyre type checker
-.pyre/ 
+.pyre/
+
+# Cursor rules directory
+.cursor/rules/
+render_deployment.md
+polling_circle.md
+circle-layer-plan.md
+usdc_circle.md
+telegram_implementation.md
+prd.md
+plan.md
+airline_code_implementation.md
+
+
+
+
+
+
+
+

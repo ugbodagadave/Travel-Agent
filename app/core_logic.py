@@ -1,12 +1,14 @@
 import threading
+import os
 from app.new_session_manager import load_session, save_session
 from app.ai_service import get_ai_response, extract_flight_details_from_history, extract_traveler_details, extract_traveler_names
 from app.amadeus_service import AmadeusService
 from app.payment_service import create_checkout_session
-from app.tasks import search_flights_task, poll_usdc_payment_task
+from app.tasks import search_flights_task, poll_usdc_payment_task, poll_circlelayer_payment_task
 from app.circle_service import CircleService
 from app.currency_service import CurrencyService
-from app.new_session_manager import save_wallet_mapping
+from app.new_session_manager import save_wallet_mapping, save_evm_mapping, get_next_address_index, save_circlelayer_payment_info
+import app.circlelayer_service as circlelayer_service
 from dateutil import parser
 
 TRAVEL_CLASSES = ["ECONOMY", "PREMIUM_ECONOMY", "BUSINESS", "FIRST"]
@@ -36,7 +38,14 @@ def process_message(user_id, incoming_msg, amadeus_service: AmadeusService):
     Processes an incoming message from any platform.
     Returns a list of response messages to be sent back to the user.
     """
-    state, conversation_history, flight_offers, flight_details = load_session(user_id)
+    try:
+        state, conversation_history, flight_offers, flight_details = load_session(user_id)
+        print(f"[Core Logic] Loaded session for {user_id}: state={state}")
+    except Exception as e:
+        print(f"[Core Logic] ERROR loading session for {user_id}: {e}")
+        # Fallback to default state if Redis fails
+        state, conversation_history, flight_offers, flight_details = "GATHERING_INFO", [], [], {}
+    
     response_messages = []
 
     # NOTE: This is a simplified version of the logic from app/main.py's webhook.
@@ -63,7 +72,12 @@ def process_message(user_id, incoming_msg, amadeus_service: AmadeusService):
             if num_travelers > 1:
                 state = "GATHERING_NAMES"
                 response_messages.append(f"It looks like there are {num_travelers} travelers. Please provide their full names, separated by commas.")
-                save_session(user_id, state, updated_history, flight_offers, flight_details)
+                try:
+                    save_session(user_id, state, updated_history, flight_offers, flight_details)
+                    print(f"[Core Logic] Session saved for {user_id}")
+                except Exception as e:
+                    print(f"[Core Logic] WARNING: Could not save session for {user_id}: {e}")
+                    # Continue processing even if session save fails
             else:
                 # For a single traveler, go directly to class selection
                 state = "AWAITING_CLASS_SELECTION"
@@ -71,10 +85,20 @@ def process_message(user_id, incoming_msg, amadeus_service: AmadeusService):
                 response_messages.append(class_options_text)
                 # Also add user's last message and our prompt to history
                 updated_history.append({"role": "assistant", "content": class_options_text})
-                save_session(user_id, state, updated_history, flight_offers, flight_details)
+                try:
+                    save_session(user_id, state, updated_history, flight_offers, flight_details)
+                    print(f"[Core Logic] Session saved for {user_id}")
+                except Exception as e:
+                    print(f"[Core Logic] WARNING: Could not save session for {user_id}: {e}")
+                    # Continue processing even if session save fails
         else:
             response_messages.append(ai_response)
-            save_session(user_id, state, updated_history, flight_offers, flight_details)
+            try:
+                save_session(user_id, state, updated_history, flight_offers, flight_details)
+                print(f"[Core Logic] Session saved for {user_id}")
+            except Exception as e:
+                print(f"[Core Logic] WARNING: Could not save session for {user_id}: {e}")
+                # Continue processing even if session save fails
 
     elif state == "GATHERING_NAMES":
         num_travelers = int(flight_details.get("number_of_travelers", 1))
@@ -232,7 +256,7 @@ def process_message(user_id, incoming_msg, amadeus_service: AmadeusService):
                     selected_flight = flight_offers[selection - 1] # Correctly index the selected flight
                     
                     state = "AWAITING_PAYMENT_SELECTION"
-                    response_messages.append("You've selected a great flight. How would you like to pay? (Reply with 'Card' or 'USDC')")
+                    response_messages.append("You've selected a great flight. How would you like to pay? (Reply with 'Card', 'USDC', or 'On-chain')")
                     
                     # Save the selected flight in the session for the next step
                     save_session(user_id, state, conversation_history, [selected_flight], flight_details)
@@ -317,8 +341,95 @@ def process_message(user_id, incoming_msg, amadeus_service: AmadeusService):
                 response_messages.append("Sorry, there was an issue processing the flight price. Please try again.")
                 save_session(user_id, state, conversation_history, [selected_flight], flight_details)
 
+        elif "on-chain" in incoming_msg.lower() or "circle layer" in incoming_msg.lower() or "clayer" in incoming_msg.lower() or "circlelayer" in incoming_msg.lower():
+            try:
+                # Native token configuration
+                token_symbol = os.getenv("CIRCLE_LAYER_TOKEN_SYMBOL", "CLAYER")
+                decimals = int(os.getenv("CIRCLE_LAYER_TOKEN_DECIMALS", "18"))
+                token_address = None  # Native token - no contract address needed
+                
+                # Calculate amount in wei (smallest unit)
+                amount_in_tokens = 1.0  # 1 CLAYER
+                amount_units = int(amount_in_tokens * (10 ** decimals))
+                
+                # Get unique address index to prevent reuse
+                address_index = get_next_address_index()
+                
+                # Derive a unique deposit address
+                deposit = circlelayer_service.CircleLayerService.create_deposit_address(index=address_index)
+                deposit_address = deposit.get("address")
+
+                if deposit_address:
+                    # Get initial balance to track payment increase
+                    try:
+                        circlelayer_svc = circlelayer_service.CircleLayerService()
+                        initial_balance = circlelayer_svc.check_native_balance(deposit_address)
+                        print(f"[{user_id}] - INFO: Initial balance at {deposit_address}: {initial_balance} wei")
+                    except Exception as e:
+                        print(f"[{user_id}] - WARNING: Could not get initial balance: {e}")
+                        initial_balance = 0
+                    
+                    # Save payment tracking information
+                    save_circlelayer_payment_info(
+                        user_id=user_id,
+                        address=deposit_address,
+                        initial_balance=initial_balance,
+                        expected_amount=amount_units,
+                        address_index=address_index
+                    )
+                    
+                    save_evm_mapping(deposit_address, user_id)
+
+                    # Persist details for verification
+                    flight_details["circlelayer"] = {
+                        "address": deposit_address,
+                        "token_address": token_address,  # None for native token
+                        "amount": amount_units,
+                        "decimals": decimals,
+                        "address_index": address_index,
+                        "initial_balance": initial_balance,
+                    }
+                    state = "AWAITING_CIRCLE_LAYER_PAYMENT"
+                    save_session(user_id, state, conversation_history, [selected_flight], flight_details)
+
+                    # Notify user (two messages for easy copy of address)
+                    response_messages.append(
+                        f"To pay on Circle Layer Testnet, please send exactly {amount_in_tokens:.2f} {token_symbol} to the address below. I will notify you once the payment is confirmed."
+                    )
+                    response_messages.append(deposit_address)
+
+                    # Start background poller for native token balance
+                    try:
+                        poll_thread = threading.Thread(
+                            target=poll_circlelayer_payment_task,
+                            args=(user_id, deposit_address, token_address, amount_units, decimals),
+                        )
+                        poll_thread.start()
+                        print(f"[{user_id}] - INFO: Started Circle Layer polling for payment at {deposit_address} (index {address_index})")
+                    except Exception as e:
+                        print(f"[{user_id}] - ERROR: Could not start Circle Layer polling thread: {e}")
+                else:
+                    response_messages.append("Sorry, I couldn't generate a Circle Layer address right now. Please try again or choose 'Card'.")
+                    save_session(user_id, state, conversation_history, [selected_flight], flight_details)
+            except Exception as e:
+                print(f"[{user_id}] - ERROR in Circle Layer payment flow: {e}")
+                response_messages.append("Sorry, something went wrong initializing Circle Layer payment. Please try again or choose 'Card'.")
+                save_session(user_id, state, conversation_history, [selected_flight], flight_details)
+
         else:
-            response_messages.append("I didn't understand. Please reply with 'Card' or 'USDC'.")
+            response_messages.append("I didn't understand. Please reply with 'Card', 'USDC', or 'On-chain'.")
+            save_session(user_id, state, conversation_history, flight_offers, flight_details)
+
+    elif state == "BOOKING_CONFIRMED":
+        # If the user wants to start a new booking, reset the state.
+        if "start over" in incoming_msg.lower() or "new booking" in incoming_msg.lower():
+            state = "GATHERING_INFO"
+            response_messages.append("Of course. I can help with a new flight search. Where would you like to go?")
+            # Clear previous flight data for the new session
+            save_session(user_id, state, [], [], {})
+        else:
+            # Otherwise, inform them that the booking is complete.
+            response_messages.append("Your previous booking is complete. If you'd like to search for a new flight, please say 'start over' or 'new booking'.")
             save_session(user_id, state, conversation_history, flight_offers, flight_details)
 
     else:
@@ -327,4 +438,4 @@ def process_message(user_id, incoming_msg, amadeus_service: AmadeusService):
         state = "GATHERING_INFO"
         save_session(user_id, state, [], [], {})
 
-    return response_messages 
+    return response_messages

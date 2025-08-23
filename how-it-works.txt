@@ -18,10 +18,11 @@ Once you've confirmed your trip details, the front desk immediately sends you a 
 *   **Technology Used:** The **Amadeus API** provides real-time flight data, and the application uses a background **threading** process to find it without slowing down the main chat.
 
 **4. You Choose and Pay**
-The agent sends you the flight options as a simple, numbered list. When you reply with the number you want, you'll be asked if you want to pay with a **Card** or with **USDC** (a type of cryptocurrency).
+The agent sends you the flight options as a simple, numbered list. When you reply with the number you want, you'll be asked if you want to pay with a **Card**, **USDC** (a type of cryptocurrency), or **On-chain**.
 *   **If you choose "Card"**: The system generates a secure payment link for you.
 *   **If you choose "USDC"**: The system gives you a unique crypto address to send your payment to.
-*   **Technology Used:** The **Stripe API** handles card payments, and the **Circle API** handles USDC payments.
+*   **If you choose "On-chain"**: The system gives you a unique blockchain address to send 1 CLAYER (native token) to.
+*   **Technology Used:** The **Stripe API** handles card payments, the **Circle API** handles USDC payments, and **Circle Layer blockchain** handles native CLAYER token payments.
 
 **5. Booking is Confirmed... Automatically!**
 After you complete the payment, the application confirms it and generates your ticket.
@@ -36,4 +37,14 @@ The moment the booking is confirmed, you receive a final message on WhatsApp or 
 ### How Does It Remember Me?
 
 The agent can have conversations with many users at once and never gets confused. This is because it saves the context of your specific conversation in a fast, in-memory database.
-*   **Technology Used:** A **Redis** database (hosted on Render) securely stores your conversation history, so you can even pause and come back later without starting over. 
+*   **Technology Used:** A **Redis** database (hosted on Render) securely stores your conversation history, so you can even pause and come back later without starting over.
+
+---
+### Reliability & Error Handling
+
+The system is designed to be reliable and provide a good experience even when things go wrong:
+
+*   **Smart Error Handling:** If there are technical issues, the agent provides helpful responses instead of generic error messages
+*   **Graceful Failures:** The system continues working even if some components are temporarily unavailable
+*   **Comprehensive Monitoring:** Detailed logging and health checks ensure issues are quickly identified and resolved
+*   **User-Friendly:** You'll always get a meaningful response, even during technical difficulties 
