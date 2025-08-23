@@ -7,6 +7,17 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
+# Verify API key is loaded
+io_api_key = os.getenv("IO_API_KEY")
+if not io_api_key:
+    raise ValueError("IO_API_KEY environment variable is not set. Please check your .env file.")
+
+# Configure the OpenAI client for io.net
+client = openai.OpenAI(
+    api_key=io_api_key,
+    base_url="https://api.intelligence.io.solutions/api/v1/",
+)
+
 # System prompt to instruct the AI Agent on its role and how to behave.
 SYSTEM_PROMPT_GATHER_INFO = """
 You are Flai, a specialized AI assistant for booking flights. Your **only** function is to gather travel information.
@@ -38,12 +49,6 @@ Your task is to determine if the user's response is a confirmation or a correcti
 - If the user's message is a confirmation (e.g., "yes", "correct"), respond with *only* the special token: `[CONFIRMED]`
 - If the user's message is a correction (e.g., "no, to Rome"), integrate the correction, restate the updated information, and ask for confirmation again. End this message with the `[INFO_COMPLETE]` token.
 """
-
-# Configure the OpenAI client for io.net
-client = openai.OpenAI(
-    api_key=os.getenv("IO_API_KEY"),
-    base_url="https://api.intelligence.io.solutions/api/v1/",
-)
 
 def get_ai_response(user_message: str, conversation_history: list, state: str) -> (str, list):
     if not conversation_history:
