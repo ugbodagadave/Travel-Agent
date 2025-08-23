@@ -70,13 +70,13 @@ This is the most critical part of the architecture.
 
 #### Step 5: Payment and Itinerary Delivery
 
-This is the final part of the journey, which now offers two distinct paths: traditional card payment (Stripe) and cryptocurrency (USDC).
+This is the final part of the journey, which now offers three distinct paths: traditional card payment (Stripe), cryptocurrency (USDC), and native blockchain tokens (Circle Layer).
 
 1.  **User Selects Flight:** The user receives the list of flights and replies with the number of their choice (e.g., "1").
 
 2.  **Payment Method Selection (`app/core_logic.py`):**
     *   The system transitions the user's state to `AWAITING_PAYMENT_SELECTION`.
-    *   It sends the message: "You've selected a great flight. How would you like to pay? (Reply with 'Card' or 'USDC')"
+    *   It sends the message: "You've selected a great flight. How would you like to pay? (Reply with 'Card', 'USDC', or 'Pay on-chain (Circle Layer)')"
 
 ---
 ##### Path A: Paying with a Card (Stripe)
@@ -99,6 +99,17 @@ This is the final part of the journey, which now offers two distinct paths: trad
     *   As soon as the address is sent to the user, a new background thread is started to run the `poll_usdc_payment_task`.
     *   The main application's work is done for now, and it can respond to other users.
     *   **NOTE FOR TESTING:** To work with the limitations of the [Circle Testnet Faucet](https://faucet.circle.com/), the application currently **ignores the real flight price** for USDC payments and always requests **10.00 USDC**.
+
+---
+##### Path C: Paying with Circle Layer (Native CLAYER Token)
+
+1.  **User Selects Circle Layer:** The user replies "Pay on-chain (Circle Layer)".
+2.  **Address Generation (`app/circlelayer_service.py`):** The system generates a deterministic deposit address using the merchant's mnemonic.
+3.  **User Pays:** The user is sent two separate messages: one with instructions to send exactly 1.00 CLAYER, and a second message containing only the deposit address for easy copying.
+4.  **Start Background Polling (`app/core_logic.py` & `app/tasks.py`):**
+    *   As soon as the address is sent to the user, a new background thread is started to run the `poll_circlelayer_payment_task`.
+    *   The polling task checks the native CLAYER balance of the deposit address every 15 seconds.
+    *   **Native Token Benefits:** Direct blockchain balance checking without smart contract complexity.
 
 ---
 #### Step 6: Confirmation and Ticket Delivery
@@ -147,7 +158,7 @@ This approach ensures that files are persisted reliably and can be accessed from
 *   **Messaging Platforms:** **Twilio** for WhatsApp, **Telegram Bot API** for Telegram.
 *   **Natural Language Understanding:** **IO Intelligence API**.
 *   **Flight Data & Booking:** **Amadeus**.
-*   **Payments:** **Stripe**, **Circle**.
+*   **Payments:** **Stripe**, **Circle**, **Circle Layer blockchain**.
 *   **Session Storage:** **Redis** is the backbone of the system, used for storing conversation state.
 *   **Testing:** **Pytest**.
 *   **Hosting:** **Render**. 

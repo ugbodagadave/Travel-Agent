@@ -162,14 +162,14 @@ def poll_usdc_payment_task(user_id, intent_id, poll_interval=30, timeout_seconds
 # -----------------------------------------------
 
 def poll_circlelayer_payment_task(user_id: str, address: str, token_address: str, amount_units: float, decimals: int, poll_interval: int = None, min_confirmations: int = None, timeout_seconds: int = 3600):
-    """Poll Circle Layer for ERC-20 transfers to `address` until `amount_units` is met.
+    """Poll Circle Layer for native token payments to `address` until `amount_units` is met.
 
     Args:
         user_id: platform-specific id (e.g., telegram:123)
         address: deposit address to receive funds
-        token_address: ERC-20 contract address
-        amount_units: target amount in human units (e.g., 10.00)
-        decimals: token decimals (e.g., 6)
+        token_address: None for native tokens, contract address for ERC-20 tokens
+        amount_units: target amount in smallest units (e.g., wei for native tokens)
+        decimals: token decimals (e.g., 18 for native tokens)
         poll_interval: seconds between polls (default from env CIRCLE_LAYER_POLL_INTERVAL or 15)
         min_confirmations: required confirmations (default from env CIRCLE_LAYER_MIN_CONFIRMATIONS or 3)
         timeout_seconds: stop polling after this many seconds
@@ -182,55 +182,79 @@ def poll_circlelayer_payment_task(user_id: str, address: str, token_address: str
         return
 
     svc = CircleLayerService()
-    to_checksum = svc.w3.to_checksum_address  # type: ignore
-    to_addr = to_checksum(address)
-    target_amount = int(round(amount_units * (10 ** decimals)))
-
+    
     # Defaults
     if poll_interval is None:
         poll_interval = int(os.getenv("CIRCLE_LAYER_POLL_INTERVAL", "15"))
     if min_confirmations is None:
         min_confirmations = int(os.getenv("CIRCLE_LAYER_MIN_CONFIRMATIONS", "3"))
 
-    print(f"[{user_id}] - INFO: Starting Circle Layer polling for {amount_units} at {to_addr}.")
+    print(f"[{user_id}] - INFO: Starting Circle Layer polling for {amount_units} smallest units at {address}.")
     start = time.time()
-    last_from = max(0, svc.get_confirmed_block(min_confirmations) - 2000)
 
-    # Build event and filter parameters lazily each loop for updated blocks
-    contract = svc.erc20_contract(token_address)
-    Transfer = contract.events.Transfer
+    # Check if this is a native token payment
+    if token_address is None:
+        # Native token payment - check balance directly
+        while time.time() - start < timeout_seconds:
+            try:
+                current_balance = svc.check_native_balance(address, min_confirmations)
+                print(f"[{user_id}] - DEBUG: Current native balance: {current_balance} wei, target: {amount_units} wei")
+                
+                if current_balance >= amount_units:
+                    print(f"[{user_id}] - INFO: Native token payment confirmed: {current_balance} >= {amount_units}.")
+                    try:
+                        handle_successful_payment(user_id)
+                    except Exception as e:
+                        print(f"[{user_id}] - ERROR calling handle_successful_payment: {e}")
+                    return
+                    
+            except Exception as e:
+                print(f"[{user_id}] - WARNING: Native balance check error: {e}")
+                
+            time.sleep(poll_interval)
+    else:
+        # ERC-20 token payment - use existing transfer event logic
+        to_checksum = svc.w3.to_checksum_address  # type: ignore
+        to_addr = to_checksum(address)
+        target_amount = int(round(amount_units * (10 ** decimals)))
 
-    while time.time() - start < timeout_seconds:
-        try:
-            to_block = svc.get_confirmed_block(min_confirmations)
-            logs = svc.w3.eth.get_logs({
-                "fromBlock": last_from,
-                "toBlock": to_block,
-                "address": svc.w3.to_checksum_address(token_address),
-            })
-            total = 0
-            # Decode and sum transfers to our address
-            for log in logs:
-                try:
-                    ev = Transfer().process_log(log)
-                    if ev["args"]["to"] == to_addr:
-                        total += int(ev["args"]["value"])
-                except Exception:
-                    continue
+        last_from = max(0, svc.get_confirmed_block(min_confirmations) - 2000)
 
-            if total >= target_amount:
-                print(f"[{user_id}] - INFO: Circle Layer payment met: {total} >= {target_amount}.")
-                try:
-                    handle_successful_payment(user_id)
-                except Exception as e:
-                    print(f"[{user_id}] - ERROR calling handle_successful_payment: {e}")
-                return
+        # Build event and filter parameters lazily each loop for updated blocks
+        contract = svc.erc20_contract(token_address)
+        Transfer = contract.events.Transfer
 
-            last_from = to_block
-        except Exception as e:
-            # Network hiccup / RPC failover; log and keep trying
-            print(f"[{user_id}] - WARNING: Circle Layer polling error: {e}")
+        while time.time() - start < timeout_seconds:
+            try:
+                to_block = svc.get_confirmed_block(min_confirmations)
+                logs = svc.w3.eth.get_logs({
+                    "fromBlock": last_from,
+                    "toBlock": to_block,
+                    "address": svc.w3.to_checksum_address(token_address),
+                })
+                total = 0
+                # Decode and sum transfers to our address
+                for log in logs:
+                    try:
+                        ev = Transfer().process_log(log)
+                        if ev["args"]["to"] == to_addr:
+                            total += int(ev["args"]["value"])
+                    except Exception:
+                        continue
 
-        time.sleep(poll_interval)
+                if total >= target_amount:
+                    print(f"[{user_id}] - INFO: ERC-20 token payment met: {total} >= {target_amount}.")
+                    try:
+                        handle_successful_payment(user_id)
+                    except Exception as e:
+                        print(f"[{user_id}] - ERROR calling handle_successful_payment: {e}")
+                    return
 
-    print(f"[{user_id}] - WARNING: Circle Layer polling timed out after {timeout_seconds}s for {to_addr}.") 
+                last_from = to_block
+            except Exception as e:
+                # Network hiccup / RPC failover; log and keep trying
+                print(f"[{user_id}] - WARNING: ERC-20 token polling error: {e}")
+
+            time.sleep(poll_interval)
+
+    print(f"[{user_id}] - WARNING: Circle Layer polling timed out after {timeout_seconds}s for {address}.") 

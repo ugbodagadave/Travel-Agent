@@ -150,4 +150,50 @@ class CircleLayerService:
     @classmethod
     def create_deposit_address(cls, index: int) -> Dict[str, str]:
         address = cls.derive_address_at_index(index)
-        return {"address": address, "index": str(index)} 
+        return {"address": address, "index": str(index)}
+
+    def check_native_balance(self, address: str, min_confirmations: Optional[int] = None) -> int:
+        """Check the native token balance for a given address.
+        
+        Args:
+            address: The address to check balance for
+            min_confirmations: Minimum confirmations required (default from env or 3)
+            
+        Returns:
+            Balance in wei (smallest unit)
+        """
+        self.connect()
+        checksum_addr = self.w3.to_checksum_address(address)
+        
+        # Get balance at confirmed block
+        confirmed_block = self.get_confirmed_block(min_confirmations)
+        balance = self.w3.eth.get_balance(checksum_addr, block_identifier=confirmed_block)
+        
+        return balance
+
+    def get_transaction_status(self, tx_hash: str) -> Optional[Dict]:
+        """Get transaction details and status.
+        
+        Args:
+            tx_hash: Transaction hash to check
+            
+        Returns:
+            Transaction details dict or None if not found
+        """
+        try:
+            self.connect()
+            tx = self.w3.eth.get_transaction(tx_hash)
+            if tx:
+                receipt = self.w3.eth.get_transaction_receipt(tx_hash)
+                return {
+                    "hash": tx_hash,
+                    "from": tx["from"],
+                    "to": tx["to"],
+                    "value": tx["value"],
+                    "block_number": tx["blockNumber"],
+                    "status": receipt["status"] if receipt else None,
+                    "confirmations": self.w3.eth.block_number - tx["blockNumber"] if tx["blockNumber"] else 0
+                }
+        except Exception as e:
+            print(f"[CircleLayerService] ERROR getting transaction status: {e}")
+        return None 

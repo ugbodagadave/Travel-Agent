@@ -18,4 +18,4 @@
 
 ## Risks
 - RPC instability; explorer/token availability on testnet.
-- Secret management for mnemonic/private key. 
+- Secret management for mnemonic/private key.

@@ -369,14 +369,14 @@ def test_awaiting_payment_selection_circle_layer(mock_create_deposit, mock_save_
     responses = process_message(user_id, "Circle Layer", MagicMock())
 
     assert len(responses) == 2
-    assert "please send exactly" in responses[0].lower()
+    assert "please send exactly 1.00 CLAYER" in responses[0]
     assert responses[1] == "0xDEPOSIT"
     mock_save_session.assert_called_with(user_id, "AWAITING_CIRCLE_LAYER_PAYMENT", [], selected_flight, {
         'circlelayer': {
             'address': '0xDEPOSIT',
-            'token_address': os.getenv('CIRCLE_LAYER_TOKEN_ADDRESS'),
-            'amount': 10.0,
-            'decimals': int(os.getenv('CIRCLE_LAYER_TOKEN_DECIMALS', '18'))
+            'token_address': None,  # Native token - no contract address
+            'amount': 1000000000000000000,  # 1 CLAYER in wei (18 decimals)
+            'decimals': 18
         }
     })
 
@@ -392,5 +392,5 @@ def test_awaiting_payment_selection_invalid(mock_save_session, mock_load_session
 
     response = process_message(user_id, "Bitcoin", MagicMock())
 
-    assert "I didn't understand. Please reply with 'Card' or 'USDC'." in response[0]
+    assert "I didn't understand. Please reply with 'Card', 'USDC', or 'Pay on-chain (Circle Layer)'." in response[0]
     mock_save_session.assert_called_once_with(user_id, "AWAITING_PAYMENT_SELECTION", ["history"], selected_flight, {}) 

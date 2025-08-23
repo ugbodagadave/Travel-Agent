@@ -17,4 +17,4 @@
 ## UX goals
 - Fast responses with background processing.
 - Clear confirmations and error recovery.
-- Minimal steps to pay; proactive notifications when ready. 
+- Minimal steps to pay; proactive notifications when ready.

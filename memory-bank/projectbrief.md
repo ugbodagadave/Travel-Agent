@@ -5,4 +5,4 @@
 - Users: Travelers wanting conversational booking.
 - Scope: Conversation, flight search (Amadeus), payments (Stripe, USDC, Circle Layer planned), PDF delivery, Redis sessions, Render deployment.
 - Out of Scope (current): Real production booking, multi-city, hotels.
-- Success: Users can complete a booking flow end-to-end on testnet/sandbox with resilient UX. 
+- Success: Users can complete a booking flow end-to-end on testnet/sandbox with resilient UX.

@@ -10,4 +10,4 @@
   - Planned: Circle Layer EVM payments via Web3 polling.
 - PDF generation via FPDF2; uploaded to Cloudinary for WhatsApp.
 - Render deployment using render.yaml; Redis provisioned as service.
-- Testing via pytest; services mocked in unit tests. 
+- Testing via pytest; services mocked in unit tests.

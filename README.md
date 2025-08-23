@@ -9,9 +9,10 @@ This project is an AI-powered travel agent accessible via WhatsApp and Telegram.
 - **Airline Name Display**: Looks up and displays the full airline name (e.g., "American Airlines") for each flight option, providing a clearer user experience.
 - **Flight Class Selection**: Users can specify their preferred travel class (e.g., Economy, Business, First Class). The application searches based on this preference and displays it in the flight options and on the final PDF ticket.
 - **Multi-Traveler Booking**: If a booking is for more than one person, the agent collects the full names of all travelers. After payment, it generates and delivers a separate, personalized PDF ticket for each individual.
-- **Dual Payment Options & Confirmation**:
+- **Triple Payment Options & Confirmation**:
   - **Stripe**: Creates secure Stripe Checkout links for card payments, confirmed via webhook.
   - **USDC**: Uses Circle's API to generate a unique payment address. Payment confirmation is now handled by a robust **background polling mechanism**, which reliably checks the payment status until it's complete, ensuring timely ticket delivery.
+  - **Circle Layer (Native CLAYER)**: Generates deterministic deposit addresses for native token payments. Payment confirmation is handled by blockchain balance monitoring with configurable confirmation thresholds.
 - **Persistent State**: Maintains conversation state for each user in a Redis database.
 - **Responsive & Resilient Architecture**: Long-running tasks like flight searches and payment polling are run in background threads, so the main application is never blocked and can recover from external service delays.
 
@@ -104,6 +105,16 @@ For a detailed, technical deep-dive (including production considerations), see `
     # Circle API Key (for USDC Payments)
     CIRCLE_API_KEY=
 
+    # Circle Layer Integration (for Native CLAYER Token Payments)
+    CIRCLE_LAYER_RPC_URL=https://testnet-rpc.circlelayer.com
+    CIRCLE_LAYER_CHAIN_ID=28525
+    CIRCLE_LAYER_TOKEN_SYMBOL=CLAYER
+    CIRCLE_LAYER_TOKEN_DECIMALS=18
+    # CIRCLE_LAYER_TOKEN_ADDRESS=  # Comment out for native tokens
+    CIRCLE_LAYER_MERCHANT_MNEMONIC=your_mnemonic_here
+    CIRCLE_LAYER_MIN_CONFIRMATIONS=3
+    CIRCLE_LAYER_POLL_INTERVAL=15
+
     # Stripe API Keys
     STRIPE_PUBLISHABLE_KEY=
     STRIPE_SECRET_KEY=
@@ -124,6 +135,7 @@ For a detailed, technical deep-dive (including production considerations), see `
     - **IO Intelligence**: Create an account on the IO Intelligence platform and generate an API key.
     - **Amadeus**: Register for a Self-Service account on the Amadeus for Developers portal to get your `Client ID` and `Client Secret`.
     - **Circle**: Sign up for a Circle developer account and get your API key from the dashboard.
+    - **Circle Layer**: For native CLAYER token payments, you'll need a merchant mnemonic phrase. The system will generate deterministic deposit addresses from this mnemonic.
     - **Stripe**: Sign up for a Stripe account and find your `Publishable Key`, `Secret Key`, and `Webhook Secret` in the Developers dashboard.
     - **Redis**: For local development, you need to run a Redis server. On Render, the `REDIS_URL` is automatically provided to the service.
 

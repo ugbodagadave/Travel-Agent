@@ -13,4 +13,4 @@
 - Tests for poller edge cases
 
 ## Known issues
-- None tracked for Circle Layer yet; expect RPC variance. 
+- None tracked for Circle Layer yet; expect RPC variance.

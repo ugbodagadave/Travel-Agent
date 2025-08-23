@@ -18,10 +18,11 @@ Once you've confirmed your trip details, the front desk immediately sends you a 
 *   **Technology Used:** The **Amadeus API** provides real-time flight data, and the application uses a background **threading** process to find it without slowing down the main chat.
 
 **4. You Choose and Pay**
-The agent sends you the flight options as a simple, numbered list. When you reply with the number you want, you'll be asked if you want to pay with a **Card** or with **USDC** (a type of cryptocurrency).
+The agent sends you the flight options as a simple, numbered list. When you reply with the number you want, you'll be asked if you want to pay with a **Card**, **USDC** (a type of cryptocurrency), or **Pay on-chain (Circle Layer)**.
 *   **If you choose "Card"**: The system generates a secure payment link for you.
 *   **If you choose "USDC"**: The system gives you a unique crypto address to send your payment to.
-*   **Technology Used:** The **Stripe API** handles card payments, and the **Circle API** handles USDC payments.
+*   **If you choose "Pay on-chain (Circle Layer)"**: The system gives you a unique blockchain address to send 1 CLAYER (native token) to.
+*   **Technology Used:** The **Stripe API** handles card payments, the **Circle API** handles USDC payments, and **Circle Layer blockchain** handles native CLAYER token payments.
 
 **5. Booking is Confirmed... Automatically!**
 After you complete the payment, the application confirms it and generates your ticket.

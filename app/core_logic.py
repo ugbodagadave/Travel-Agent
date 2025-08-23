@@ -234,7 +234,7 @@ def process_message(user_id, incoming_msg, amadeus_service: AmadeusService):
                     selected_flight = flight_offers[selection - 1] # Correctly index the selected flight
                     
                     state = "AWAITING_PAYMENT_SELECTION"
-                    response_messages.append("You've selected a great flight. How would you like to pay? (Reply with 'Card' or 'USDC')")
+                    response_messages.append("You've selected a great flight. How would you like to pay? (Reply with 'Card', 'USDC', or 'Pay on-chain (Circle Layer)')")
                     
                     # Save the selected flight in the session for the next step
                     save_session(user_id, state, conversation_history, [selected_flight], flight_details)
@@ -321,17 +321,15 @@ def process_message(user_id, incoming_msg, amadeus_service: AmadeusService):
 
         elif "circle layer" in incoming_msg.lower() or "clayer" in incoming_msg.lower() or "circlelayer" in incoming_msg.lower():
             try:
-                # Fixed test amount; replace with conversion logic in production
-                token_symbol = os.getenv("CIRCLE_LAYER_TOKEN_SYMBOL", "USDTt")
+                # Native token configuration
+                token_symbol = os.getenv("CIRCLE_LAYER_TOKEN_SYMBOL", "CLAYER")
                 decimals = int(os.getenv("CIRCLE_LAYER_TOKEN_DECIMALS", "18"))
-                token_address = os.getenv("CIRCLE_LAYER_TOKEN_ADDRESS")
-                amount_units = 10.00
-
-                if not token_address:
-                    response_messages.append("Sorry, Circle Layer token address is not configured.")
-                    save_session(user_id, state, conversation_history, [selected_flight], flight_details)
-                    return response_messages
-
+                token_address = None  # Native token - no contract address needed
+                
+                # Calculate amount in wei (smallest unit)
+                amount_in_tokens = 1.0  # 1 CLAYER
+                amount_units = int(amount_in_tokens * (10 ** decimals))
+                
                 # Derive a deposit address (index 0 for testing)
                 deposit = circlelayer_service.CircleLayerService.create_deposit_address(index=0)
                 deposit_address = deposit.get("address")
@@ -342,7 +340,7 @@ def process_message(user_id, incoming_msg, amadeus_service: AmadeusService):
                     # Persist details for verification
                     flight_details["circlelayer"] = {
                         "address": deposit_address,
-                        "token_address": token_address,
+                        "token_address": token_address,  # None for native token
                         "amount": amount_units,
                         "decimals": decimals,
                     }
@@ -351,11 +349,11 @@ def process_message(user_id, incoming_msg, amadeus_service: AmadeusService):
 
                     # Notify user (two messages for easy copy of address)
                     response_messages.append(
-                        f"To pay on Circle Layer Testnet, please send exactly {amount_units:.2f} {token_symbol} to the address below. I will notify you once the payment is confirmed."
+                        f"To pay on Circle Layer Testnet, please send exactly {amount_in_tokens:.2f} {token_symbol} to the address below. I will notify you once the payment is confirmed."
                     )
                     response_messages.append(deposit_address)
 
-                    # Start background poller
+                    # Start background poller for native token balance
                     try:
                         poll_thread = threading.Thread(
                             target=poll_circlelayer_payment_task,
@@ -373,7 +371,7 @@ def process_message(user_id, incoming_msg, amadeus_service: AmadeusService):
                 save_session(user_id, state, conversation_history, [selected_flight], flight_details)
 
         else:
-            response_messages.append("I didn't understand. Please reply with 'Card' or 'USDC'.")
+            response_messages.append("I didn't understand. Please reply with 'Card', 'USDC', or 'Pay on-chain (Circle Layer)'.")
             save_session(user_id, state, conversation_history, flight_offers, flight_details)
 
     elif state == "BOOKING_CONFIRMED":
@@ -394,4 +392,4 @@ def process_message(user_id, incoming_msg, amadeus_service: AmadeusService):
         state = "GATHERING_INFO"
         save_session(user_id, state, [], [], {})
 
-    return response_messages 
+    return response_messages
