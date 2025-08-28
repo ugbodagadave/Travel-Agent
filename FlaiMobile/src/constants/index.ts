@@ -125,22 +125,23 @@ export const API_ENDPOINTS = {
 // Storage Keys
 export const STORAGE_KEYS = {
   // Authentication
-  authToken: '@flai_auth_token',
-  refreshToken: '@flai_refresh_token',
-  userId: '@flai_user_id',
+  authToken: 'flai_auth_token',
+  refreshToken: 'flai_refresh_token',
+  userId: 'flai_user_id',
   
   // User Preferences
-  theme: '@flai_theme',
-  notificationSettings: '@flai_notifications',
-  savedTravelers: '@flai_saved_travelers',
+  theme: 'flai_theme',
+  notificationSettings: 'flai_notifications',
+  savedTravelers: 'flai_saved_travelers',
   
   // Chat Data
-  messages: '@flai_messages',
-  conversationState: '@flai_conversation_state',
+  messages: 'flai_messages',
+  conversationState: 'flai_conversation_state',
   
   // App State
-  hasOnboarded: '@flai_has_onboarded',
-  appVersion: '@flai_app_version',
+  hasOnboarded: 'flai_has_onboarded',
+  onboardingCompleted: 'flai_onboarding_completed',
+  appVersion: 'flai_app_version',
 };
 
 // Message Types for Real-time Communication

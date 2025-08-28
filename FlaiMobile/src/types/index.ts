@@ -157,7 +157,7 @@ export interface AppConfig {
 
 // Navigation types
 export type RootStackParamList = {
-  Onboarding: undefined;
+  Auth: undefined;
   Main: undefined;
   Chat: undefined;
   FlightResults: undefined;
@@ -168,8 +168,145 @@ export type RootStackParamList = {
   Settings: undefined;
 };
 
+export type AuthStackParamList = {
+  Welcome: undefined;
+  Terms: undefined;
+  AuthChoice: undefined;
+};
+
 export type TabParamList = {
   Chat: undefined;
   Tickets: undefined;
   Settings: undefined;
 };
+
+// Navigation hook types
+export interface NavigationState {
+  hasCompletedOnboarding: boolean;
+  currentRoute: string;
+  isDeepLink: boolean;
+  deepLinkUrl?: string;
+}
+
+export interface NavigationStore extends NavigationState {
+  setHasCompletedOnboarding: (completed: boolean) => void;
+  setCurrentRoute: (route: string) => void;
+  setDeepLink: (url: string) => void;
+  clearDeepLink: () => void;
+  initializeNavigation: () => Promise<void>;
+}
+
+// Screen component props
+export interface ScreenProps {
+  navigation: any;
+  route: any;
+}
+
+export interface OnboardingScreenProps extends ScreenProps {
+  onNext?: () => void;
+  onSkip?: () => void;
+  onComplete?: () => void;
+}
+
+// Theme and UI related types
+export type Theme = 'light' | 'dark';
+
+export interface ThemeColors {
+  // Primary Colors
+  primary: string;
+  primaryDark: string;
+  primaryLight: string;
+  
+  // Secondary Colors
+  secondary: string;
+  secondaryDark: string;
+  secondaryLight: string;
+  
+  // Background Colors
+  background: string;
+  surface: string;
+  card: string;
+  
+  // Text Colors
+  text: string;
+  textSecondary: string;
+  textOnPrimary: string;
+  
+  // Border Colors
+  border: string;
+  divider: string;
+  
+  // State Colors
+  success: string;
+  warning: string;
+  error: string;
+  info: string;
+  
+  // Message Colors
+  userMessage: string;
+  botMessage: string;
+  userMessageText: string;
+  botMessageText: string;
+}
+
+export interface ThemeContextType {
+  theme: Theme;
+  colors: ThemeColors;
+  toggleTheme: () => void;
+  setTheme: (theme: Theme) => void;
+  isLoading: boolean;
+}
+
+// Component prop types
+export interface ButtonProps {
+  title: string;
+  onPress: () => void;
+  variant?: 'primary' | 'secondary' | 'outline' | 'text';
+  size?: 'small' | 'medium' | 'large';
+  disabled?: boolean;
+  loading?: boolean;
+  icon?: string;
+  style?: any;
+  accessibilityLabel?: string;
+}
+
+export interface InputProps {
+  value: string;
+  onChangeText: (text: string) => void;
+  placeholder?: string;
+  secureTextEntry?: boolean;
+  keyboardType?: 'default' | 'email-address' | 'numeric' | 'phone-pad';
+  autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
+  autoCorrect?: boolean;
+  error?: string;
+  helperText?: string;
+  disabled?: boolean;
+  leftIcon?: string;
+  rightIcon?: string;
+  onRightIconPress?: () => void;
+  style?: any;
+  accessibilityLabel?: string;
+}
+
+export interface CardProps {
+  children: React.ReactNode;
+  variant?: 'elevated' | 'outlined' | 'flat';
+  padding?: 'none' | 'small' | 'medium' | 'large';
+  onPress?: () => void;
+  style?: any;
+}
+
+export interface TypographyProps {
+  children: React.ReactNode;
+  variant?: 'h1' | 'h2' | 'h3' | 'body' | 'caption' | 'label';
+  color?: string;
+  align?: 'left' | 'center' | 'right';
+  numberOfLines?: number;
+  style?: any;
+}
+
+export interface LoadingProps {
+  size?: 'small' | 'medium' | 'large';
+  color?: string;
+  style?: any;
+}

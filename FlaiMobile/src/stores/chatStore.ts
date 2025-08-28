@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ChatState, Message, ConversationState, FlightOffer } from '../types';
-import { StringUtils } from '../utils';
+import { StringUtils, MessageUtils } from '../utils';
 import { STORAGE_KEYS } from '../constants';
 
 interface ChatStore extends ChatState {
@@ -20,6 +20,7 @@ interface ChatStore extends ChatState {
   selectOffer: (offer: FlightOffer) => void;
   sendMessage: (text: string) => Promise<void>;
   clearChat: () => void;
+  clearCorruptedData: () => Promise<void>;
   retryMessage: (messageId: string) => Promise<void>;
 }
 
@@ -36,11 +37,7 @@ export const useChatStore = create<ChatStore>()(
 
       // Actions
       addMessage: (messageData) => {
-        const message: Message = {
-          ...messageData,
-          id: StringUtils.generateId(),
-          timestamp: new Date(),
-        };
+        const message = MessageUtils.createMessage(messageData);
         
         set((state) => ({
           messages: [...state.messages, message],
@@ -136,6 +133,24 @@ export const useChatStore = create<ChatStore>()(
           selectedOffer: null,
         });
       },
+
+      // Clear corrupted data and reset chat
+      clearCorruptedData: async () => {
+        try {
+          await AsyncStorage.removeItem('chat-storage');
+          set({
+            messages: [],
+            isTyping: false,
+            isConnected: false,
+            conversationState: 'GATHERING_INFO',
+            flightOffers: [],
+            selectedOffer: null,
+          });
+          console.log('Cleared corrupted chat data');
+        } catch (error) {
+          console.error('Failed to clear corrupted data:', error);
+        }
+      },
     }),
     {
       name: 'chat-storage',
@@ -146,6 +161,25 @@ export const useChatStore = create<ChatStore>()(
         flightOffers: state.flightOffers,
         selectedOffer: state.selectedOffer,
       }),
+      // Transform data when loading from storage
+      onRehydrateStorage: () => (state, error) => {
+        if (error) {
+          console.error('Failed to rehydrate chat store:', error);
+          return;
+        }
+        
+        if (state?.messages) {
+          // Validate and transform messages to ensure proper Date objects
+          try {
+            state.messages = MessageUtils.validateMessages(state.messages);
+            console.log('Successfully transformed', state.messages.length, 'messages');
+          } catch (transformError) {
+            console.error('Failed to transform messages, clearing chat:', transformError);
+            // If transformation fails, clear the messages to prevent crashes
+            state.messages = [];
+          }
+        }
+      },
     }
   )
 );

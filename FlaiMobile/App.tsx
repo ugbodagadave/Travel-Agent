@@ -1,20 +1,28 @@
+import React, { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View } from 'react-native';
+import { ThemeProvider } from './src/components/theme';
+import { ErrorBoundary } from './src/components/feedback';
+import Navigation from './src/navigation';
+import { clearCorruptedChatData } from './src/utils/clearStorage';
 
 export default function App() {
+  // Temporary: Clear corrupted chat data on startup
+  useEffect(() => {
+    const clearData = async () => {
+      const cleared = await clearCorruptedChatData();
+      if (cleared) {
+        console.log('App startup: Cleared corrupted chat data');
+      }
+    };
+    clearData();
+  }, []);
+
   return (
-    <View style={styles.container}>
-      <Text>Open up App.tsx to start working on your app!</Text>
-      <StatusBar style="auto" />
-    </View>
+    <ErrorBoundary>
+      <ThemeProvider>
+        <Navigation />
+        <StatusBar style="auto" />
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});

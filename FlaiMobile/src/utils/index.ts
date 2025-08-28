@@ -1,6 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import { STORAGE_KEYS } from '../constants';
+import { Message } from '../types';
+
+// Export accessibility utilities
+export * from './accessibility';
 
 // Storage Utilities
 export class StorageService {
@@ -73,26 +77,64 @@ export class StorageService {
 
 // Date Utilities
 export class DateUtils {
-  static formatDate(date: Date): string {
-    return date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
+  // Safe date validation
+  static isValidDate(date: any): date is Date {
+    return date instanceof Date && !isNaN(date.getTime());
   }
 
-  static formatTime(date: Date): string {
-    return date.toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+  // Safe date conversion from various formats
+  static toDate(input: any): Date {
+    if (this.isValidDate(input)) {
+      return input;
+    }
+    
+    if (typeof input === 'string' || typeof input === 'number') {
+      const parsed = new Date(input);
+      if (this.isValidDate(parsed)) {
+        return parsed;
+      }
+    }
+    
+    // Fallback to current date for invalid inputs
+    console.warn('Invalid date input, using current time:', input);
+    return new Date();
   }
 
-  static formatDateTime(date: Date): string {
-    return `${this.formatDate(date)} at ${this.formatTime(date)}`;
+  // Safe time formatting with fallback
+  static formatTime(input: any): string {
+    const date = this.toDate(input);
+    try {
+      return date.toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    } catch (error) {
+      console.warn('Failed to format time, using fallback:', error);
+      return 'Invalid Time';
+    }
   }
 
-  static isToday(date: Date): boolean {
+  // Safe date formatting with fallback
+  static formatDate(input: any): string {
+    const date = this.toDate(input);
+    try {
+      return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      });
+    } catch (error) {
+      console.warn('Failed to format date, using fallback:', error);
+      return 'Invalid Date';
+    }
+  }
+
+  static formatDateTime(input: any): string {
+    return `${this.formatDate(input)} at ${this.formatTime(input)}`;
+  }
+
+  static isToday(input: any): boolean {
+    const date = this.toDate(input);
     const today = new Date();
     return (
       date.getDate() === today.getDate() &&
@@ -101,7 +143,8 @@ export class DateUtils {
     );
   }
 
-  static isYesterday(date: Date): boolean {
+  static isYesterday(input: any): boolean {
+    const date = this.toDate(input);
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
     return (
@@ -111,26 +154,29 @@ export class DateUtils {
     );
   }
 
-  static getRelativeTime(date: Date): string {
-    if (this.isToday(date)) {
-      return this.formatTime(date);
-    } else if (this.isYesterday(date)) {
+  static getRelativeTime(input: any): string {
+    if (this.isToday(input)) {
+      return this.formatTime(input);
+    } else if (this.isYesterday(input)) {
       return 'Yesterday';
     } else {
-      return this.formatDate(date);
+      return this.formatDate(input);
     }
   }
 
   static parseISOString(isoString: string): Date {
-    return new Date(isoString);
+    return this.toDate(isoString);
   }
 
-  static addMinutes(date: Date, minutes: number): Date {
+  static addMinutes(input: any, minutes: number): Date {
+    const date = this.toDate(input);
     return new Date(date.getTime() + minutes * 60000);
   }
 
-  static getDuration(start: Date, end: Date): string {
-    const diffMs = end.getTime() - start.getTime();
+  static getDuration(start: any, end: any): string {
+    const startDate = this.toDate(start);
+    const endDate = this.toDate(end);
+    const diffMs = endDate.getTime() - startDate.getTime();
     const hours = Math.floor(diffMs / (1000 * 60 * 60));
     const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
     return `${hours}h ${minutes}m`;
@@ -169,6 +215,57 @@ export class StringUtils {
   static validateEmail(email: string): boolean {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(email);
+  }
+}
+
+// Message Data Utilities
+export class MessageUtils {
+  // Validate and transform message data to ensure type safety
+  static validateMessage(messageData: any): Message {
+    const validated: Message = {
+      id: typeof messageData.id === 'string' ? messageData.id : StringUtils.generateId(),
+      text: typeof messageData.text === 'string' ? messageData.text : '',
+      isUser: Boolean(messageData.isUser),
+      timestamp: DateUtils.toDate(messageData.timestamp),
+      status: this.validateStatus(messageData.status),
+    };
+
+    return validated;
+  }
+
+  // Validate message status
+  private static validateStatus(status: any): Message['status'] {
+    const validStatuses = ['sending', 'sent', 'delivered', 'error'];
+    return validStatuses.includes(status) ? status : undefined;
+  }
+
+  // Transform array of messages ensuring all have valid timestamps
+  static validateMessages(messages: any[]): Message[] {
+    if (!Array.isArray(messages)) {
+      console.warn('Invalid messages array, returning empty array');
+      return [];
+    }
+
+    return messages.map(this.validateMessage).filter(Boolean);
+  }
+
+  // Safe message creation
+  static createMessage(data: Omit<Message, 'id' | 'timestamp'>): Message {
+    return {
+      ...data,
+      id: StringUtils.generateId(),
+      timestamp: new Date(),
+    };
+  }
+
+  // Format message timestamp for display
+  static formatMessageTime(message: Message): string {
+    return DateUtils.formatTime(message.timestamp);
+  }
+
+  // Get relative time for message
+  static getMessageRelativeTime(message: Message): string {
+    return DateUtils.getRelativeTime(message.timestamp);
   }
 
   static sanitizeInput(input: string): string {
