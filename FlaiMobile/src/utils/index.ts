@@ -1,7 +1,12 @@
+import 'react-native-get-random-values';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
+import * as Device from 'expo-device';
+import Constants from 'expo-constants';
+import { v4 as uuidv4 } from 'uuid';
 import { STORAGE_KEYS } from '../constants';
 import { Message } from '../types';
+import { DeviceInfo, DeviceUtilsInterface } from '../types/auth';
 
 // Export accessibility utilities
 export * from './accessibility';
@@ -10,31 +15,83 @@ export * from './accessibility';
 export class StorageService {
   // Secure Storage (for sensitive data like tokens)
   static async setSecure(key: string, value: string): Promise<void> {
+    if (!key || typeof key !== 'string') {
+      throw new Error('Invalid storage key provided');
+    }
+    if (!value || typeof value !== 'string') {
+      throw new Error('Invalid storage value provided');
+    }
+
     try {
       await SecureStore.setItemAsync(key, value);
     } catch (error) {
       console.error('SecureStore setItem error:', error);
-      // Fallback to AsyncStorage for development
-      await AsyncStorage.setItem(key, value);
+      // Fallback to AsyncStorage for development/testing
+      if (__DEV__) {
+        console.warn('Falling back to AsyncStorage for development');
+        await AsyncStorage.setItem(key, value);
+      } else {
+        throw new Error(`Failed to store secure data: ${error}`);
+      }
     }
   }
 
   static async getSecure(key: string): Promise<string | null> {
+    if (!key || typeof key !== 'string') {
+      console.error('Invalid storage key provided');
+      return null;
+    }
+
     try {
-      return await SecureStore.getItemAsync(key);
+      const value = await SecureStore.getItemAsync(key);
+      return value;
     } catch (error) {
       console.error('SecureStore getItem error:', error);
-      // Fallback to AsyncStorage for development
-      return await AsyncStorage.getItem(key);
+      // Fallback to AsyncStorage for development/testing
+      if (__DEV__) {
+        console.warn('Falling back to AsyncStorage for development');
+        return await AsyncStorage.getItem(key);
+      } else {
+        console.error(`Failed to retrieve secure data for key ${key}:`, error);
+        return null;
+      }
     }
   }
 
   static async removeSecure(key: string): Promise<void> {
+    if (!key || typeof key !== 'string') {
+      console.error('Invalid storage key provided');
+      return;
+    }
+
     try {
       await SecureStore.deleteItemAsync(key);
     } catch (error) {
       console.error('SecureStore removeItem error:', error);
-      await AsyncStorage.removeItem(key);
+      // Fallback to AsyncStorage for development/testing
+      if (__DEV__) {
+        console.warn('Falling back to AsyncStorage for development');
+        await AsyncStorage.removeItem(key);
+      } else {
+        console.error(`Failed to remove secure data for key ${key}:`, error);
+      }
+    }
+  }
+
+  static async clearSecure(): Promise<void> {
+    try {
+      // Clear common secure keys
+      const secureKeys = [
+        STORAGE_KEYS.authToken,
+        STORAGE_KEYS.refreshToken,
+        STORAGE_KEYS.deviceId,
+      ];
+      
+      await Promise.all(
+        secureKeys.map(key => this.removeSecure(key))
+      );
+    } catch (error) {
+      console.error('Failed to clear secure storage:', error);
     }
   }
 
@@ -234,7 +291,7 @@ export class MessageUtils {
   }
 
   // Validate message status
-  private static validateStatus(status: any): Message['status'] {
+  static validateStatus(status: any): Message['status'] {
     const validStatuses = ['sending', 'sent', 'delivered', 'error'];
     return validStatuses.includes(status) ? status : undefined;
   }
@@ -344,17 +401,61 @@ export class ValidationUtils {
 }
 
 // Device Utilities
-export class DeviceUtils {
+export class DeviceUtils implements DeviceUtilsInterface {
   static generateDeviceId(): string {
-    return `mobile_${Date.now()}_${Math.random().toString(36).substring(2)}`;
+    return uuidv4();
   }
 
-  static getDeviceInfo() {
-    // This would typically use expo-device or react-native-device-info
+  static getPlatform(): 'ios' | 'android' {
+    return Device.osName === 'iOS' ? 'ios' : 'android';
+  }
+
+  static getAppVersion(): string {
+    return Constants.expoConfig?.version || '1.0.0';
+  }
+
+  static getOSVersion(): string {
+    return Device.osVersion || 'Unknown';
+  }
+
+  static getDeviceName(): string {
+    return Device.deviceName || `${Device.brand} ${Device.modelName}` || 'Unknown Device';
+  }
+
+  static getModelName(): string {
+    return Device.modelName || 'Unknown';
+  }
+
+  static isDevice(): boolean {
+    return Device.isDevice;
+  }
+
+  static async getStoredDeviceId(): Promise<string> {
+    try {
+      let deviceId = await StorageService.getSecure(STORAGE_KEYS.deviceId);
+      if (!deviceId) {
+        deviceId = this.generateDeviceId();
+        await StorageService.setSecure(STORAGE_KEYS.deviceId, deviceId);
+      }
+      return deviceId;
+    } catch (error) {
+      console.warn('Failed to get stored device ID, generating new one:', error);
+      return this.generateDeviceId();
+    }
+  }
+
+  static async getDeviceInfo(): Promise<DeviceInfo> {
+    const deviceId = await this.getStoredDeviceId();
+    
     return {
-      platform: 'ios', // or 'android'
-      version: '1.0.0',
-      deviceId: this.generateDeviceId(),
+      platform: this.getPlatform(),
+      version: this.getAppVersion(),
+      deviceId,
+      deviceName: this.getDeviceName(),
+      appVersion: this.getAppVersion(),
+      osVersion: this.getOSVersion(),
+      modelName: this.getModelName(),
+      isDevice: this.isDevice(),
     };
   }
 }

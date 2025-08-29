@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { createStackNavigator } from '@react-navigation/stack';
+import { View, ActivityIndicator } from 'react-native';
 import { RootStackParamList } from '../types';
 import { useTheme } from '../components/theme';
 import { useAuthStore, useNavigationStore } from '../stores';
+import { Typography } from '../components/ui';
 
 // Import navigators
 import AuthNavigator from './AuthNavigator';
@@ -23,10 +25,46 @@ const Stack = createStackNavigator<RootStackParamList>();
 
 export default function StackNavigator() {
   const { colors } = useTheme();
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, isLoading, initializeAuth } = useAuthStore();
   const { hasCompletedOnboarding } = useNavigationStore();
 
-  const showAuthFlow = !hasCompletedOnboarding;
+  // Initialize authentication state on app start
+  useEffect(() => {
+    console.log('StackNavigator: Initializing authentication...');
+    initializeAuth();
+  }, [initializeAuth]);
+
+  // Show loading screen while authentication is being initialized
+  if (isLoading) {
+    return (
+      <View style={{ 
+        flex: 1, 
+        justifyContent: 'center', 
+        alignItems: 'center',
+        backgroundColor: colors.background
+      }}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Typography
+          variant="body"
+          style={{ 
+            marginTop: 16, 
+            color: colors.textSecondary 
+          }}
+        >
+          Initializing...
+        </Typography>
+      </View>
+    );
+  }
+
+  // Determine which navigation flow to show
+  const showAuthFlow = !hasCompletedOnboarding || !isAuthenticated;
+  
+  console.log('StackNavigator: Navigation state:', {
+    hasCompletedOnboarding,
+    isAuthenticated,
+    showAuthFlow
+  });
 
   return (
     <Stack.Navigator

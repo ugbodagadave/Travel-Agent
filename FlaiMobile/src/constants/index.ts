@@ -128,6 +128,7 @@ export const STORAGE_KEYS = {
   authToken: 'flai_auth_token',
   refreshToken: 'flai_refresh_token',
   userId: 'flai_user_id',
+  deviceId: 'flai_device_id',
   
   // User Preferences
   theme: 'flai_theme',

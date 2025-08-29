@@ -30,7 +30,7 @@ type AuthMode = 'choice' | 'email' | 'phone' | 'guest';
 
 export default function AuthScreen({ navigation }: Props) {
   const { colors } = useTheme();
-  const { login, register, isLoading } = useAuthStore();
+  const { login, register, isLoading, error, clearError } = useAuthStore();
   const { setHasCompletedOnboarding } = useNavigationStore();
   
   const [authMode, setAuthMode] = useState<AuthMode>('choice');
@@ -38,6 +38,13 @@ export default function AuthScreen({ navigation }: Props) {
   const [phone, setPhone] = useState('');
   const [emailError, setEmailError] = useState('');
   const [phoneError, setPhoneError] = useState('');
+
+  // Clear errors when auth mode changes
+  React.useEffect(() => {
+    clearError();
+    setEmailError('');
+    setPhoneError('');
+  }, [authMode, clearError]);
 
   const handleCompleteOnboarding = async () => {
     try {
@@ -56,14 +63,20 @@ export default function AuthScreen({ navigation }: Props) {
     }
 
     try {
+      clearError();
       await login(email);
       await handleCompleteOnboarding();
     } catch (error) {
-      Alert.alert(
-        'Login Error',
-        'There was an issue signing in. Please try again.',
-        [{ text: 'OK' }]
-      );
+      console.error('Email authentication failed:', error);
+      // Error is handled by the store, but we can show additional feedback
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage) {
+        Alert.alert(
+          'Sign In Error',
+          errorMessage || 'There was an issue signing in. Please check your email and try again.',
+          [{ text: 'OK' }]
+        );
+      }
     }
   };
 
@@ -74,25 +87,36 @@ export default function AuthScreen({ navigation }: Props) {
     }
 
     try {
+      clearError();
       await login(undefined, phone);
       await handleCompleteOnboarding();
     } catch (error) {
-      Alert.alert(
-        'Login Error',
-        'There was an issue signing in. Please try again.',
-        [{ text: 'OK' }]
-      );
+      console.error('Phone authentication failed:', error);
+      // Error is handled by the store, but we can show additional feedback
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage) {
+        Alert.alert(
+          'Sign In Error',
+          errorMessage || 'There was an issue signing in. Please check your phone number and try again.',
+          [{ text: 'OK' }]
+        );
+      }
     }
   };
 
   const handleGuestMode = async () => {
     try {
+      clearError();
+      console.log('Starting guest registration...');
       await register(); // Register as guest
       await handleCompleteOnboarding();
     } catch (error) {
+      console.error('Guest registration failed:', error);
+      // Error is handled by the store, but we can show additional feedback
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       Alert.alert(
-        'Registration Error',
-        'There was an issue setting up guest mode. Please try again.',
+        'Setup Error',
+        `There was an issue setting up guest mode: ${errorMessage}. Please try again.`,
         [{ text: 'OK' }]
       );
     }
@@ -446,6 +470,27 @@ export default function AuthScreen({ navigation }: Props) {
     }
   };
 
+  const renderError = () => {
+    if (!error) return null;
+    
+    return (
+      <View style={[styles.errorContainer, { backgroundColor: colors.error + '20', borderColor: colors.error }]}>
+        <Ionicons
+          name="alert-circle"
+          size={20}
+          color={colors.error}
+          style={styles.errorIcon}
+        />
+        <Typography
+          variant="caption"
+          style={[styles.errorText, { color: colors.error }]}
+        >
+          {error}
+        </Typography>
+      </View>
+    );
+  };
+
   return (
     <ScreenWrapper>
       <SafeAreaView style={styles.container}>
@@ -466,6 +511,7 @@ export default function AuthScreen({ navigation }: Props) {
           showsVerticalScrollIndicator={false}
           accessibilityLabel="Authentication options"
         >
+          {renderError()}
           {renderContent()}
         </ScrollView>
       </SafeAreaView>
@@ -552,6 +598,21 @@ const styles = StyleSheet.create({
   },
   guestInfo: {
     marginBottom: SPACING.sm,
+    lineHeight: 18,
+  },
+  errorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    margin: SPACING.md,
+    padding: SPACING.md,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  errorIcon: {
+    marginRight: SPACING.sm,
+  },
+  errorText: {
+    flex: 1,
     lineHeight: 18,
   },
 });
