@@ -1,12 +1,9 @@
 
 # Flai: AI Travel Agent
 
-**🚀 Deployed on Circle Layer Testnet**  
-**🏆 Built at the UK AI Agent Hackathon Ep2 under the Circle Layer bounty**
-
 ![Flai Header](Flai%20header-17.png)
 
-> **For detailed documentation on how Circle Layer was integrated in this project, see [Circle-Layer-Integration.md](Circle-Layer-Integration.md)**
+> **For detailed documentation on how Circle USDC was integrated in this project, see [Circle USDC Integration.md](Circle%20USDC%20Integration.md)**
 
 An AI-powered travel agent that helps you book flights through natural conversation. Simply chat with Flai on WhatsApp or Telegram, and it will find the best flights for you and handle payments seamlessly.
 
